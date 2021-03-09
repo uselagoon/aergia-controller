@@ -1,0 +1,10 @@
+controller:
+  config:
+    custom-http-errors: 404
+  extraArgs:
+    default-backend-service: aergia-backend/aergia-backend
+  service:
+    type: NodePort
+    nodePorts:
+      http: 32080
+      https: 32443
