@@ -191,7 +191,7 @@ spec:
           name: backend
         command:
         - /manager
-        image: shreddedbacon/aergia:v0.0.27
+        image: amazeeio/aergia:v0.0.1
         name: manager
         resources:
           limits:
