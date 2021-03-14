@@ -1,6 +1,6 @@
 controller:
-  config:
-    custom-http-errors: 404
+  # config:
+  #   custom-http-errors: 404
   extraArgs:
     default-backend-service: aergia-backend/aergia-backend
   service:

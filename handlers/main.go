@@ -152,6 +152,8 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 		}
 		w.WriteHeader(code)
 		ns := r.Header.Get(Namespace)
+		// @TODO: check for code 503 specifically, or just any request that has the namespace in it will be "unidled" if a request comes in for
+		// that ingress and the
 		if ns != "" {
 			// if a namespace exists, it means that the custom-http-errors code is defined in the ingress object
 			// so do something with that here, like kickstart the idler process to unidle targets
@@ -161,8 +163,9 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 			if h.Debug == true {
 				opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 			}
-			// log.Printf("serving custom error response for code %v and format %v from file %v", code, format, file)
+			// actually do the unidling here
 			go h.unIdle(ctx, ns, opLog)
+			// then return the unidle template to the user
 			tmpl := template.Must(template.ParseFiles(file))
 			tmpl.ExecuteTemplate(w, "base", pageData{
 				ErrorCode:       strconv.Itoa(code),
