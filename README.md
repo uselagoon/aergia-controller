@@ -13,3 +13,46 @@ This backend is designed to serve generic error handling for any http error. The
 By using the environment variable `ERROR_FILES_PATH`, and pointing to a location that contains the two templates `error.html` and `unidle.html`, you can change what is shown to the end user.
 
 This could be done using a configmap and volume mount to any directory, then update the `ERROR_FILES_PATH` to this directory.
+
+# Installation
+
+Install via helm
+
+Clone this repo then run the following and select the template version
+```
+./helm-update install-tgz
+```
+
+Alternatively, run it manually with a custom values file
+```
+helm upgrade --install --create-namespace -n aergia aergia charts/aergia-$chartversion.tgz --values values.yaml
+```
+
+## Custom templates
+If installing via helm, you can use this YAML in your values.yaml file and define the templates there.
+
+> See `www/error.html` and `www/unidle.html` for inspiration
+
+```
+templates:
+  enabled: false
+  error: |
+    {{define "base"}}
+    <html>
+    <body>
+    {{ .ErrorCode }} {{ .ErrorMessage }}
+    </body>
+    </html>
+    {{end}}
+  unidle: |
+    {{define "base"}}
+    <html>
+    <head>
+    <meta http-equiv="refresh" content="{{ .RefreshInterval }}">
+    </head>
+    <body>
+    {{ .ErrorCode }} {{ .ErrorMessage }}
+    </body>
+    </html>
+    {{end}}
+```
