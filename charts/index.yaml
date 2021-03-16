@@ -2,13 +2,13 @@ apiVersion: v1
 entries:
   aergia:
   - apiVersion: v2
-    appVersion: 0.0.1
-    created: "2021-03-16T15:08:44.170279+11:00"
+    appVersion: v0.0.1
+    created: "2021-03-16T15:42:18.550235+11:00"
     description: A Helm chart for aergia
-    digest: 0187be98afdf35ef24e485807c8fa2eff50910de4e93fbf43e6cce002edc23d1
+    digest: 8359034d165e62ccb5cd5e27581d5c6c0585c793053a9fca6f8f4b6bc3326469
     name: aergia
     type: application
     urls:
     - aergia-0.0.2.tgz
     version: 0.0.2
-generated: "2021-03-16T15:08:44.169056+11:00"
+generated: "2021-03-16T15:42:18.547744+11:00"

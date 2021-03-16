@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   repository: amazeeio/aergia
-  tag: v0.0.1
+  tag: ""
   pullPolicy: IfNotPresent
 
 kubeRbacProxy:
@@ -62,3 +62,24 @@ tolerations: []
 
 affinity: {}
 
+templates:
+  enabled: false
+  error: |
+    {{define "base"}}
+    <html>
+    <body>
+    {{ .ErrorCode }} {{ .ErrorMessage }}
+    </body>
+    </html>
+    {{end}}
+  unidle: |
+    {{define "base"}}
+    <html>
+    <head>
+    <meta http-equiv="refresh" content="{{ .RefreshInterval }}">
+    </head>
+    <body>
+    {{ .ErrorCode }} {{ .ErrorMessage }}
+    </body>
+    </html>
+    {{end}}

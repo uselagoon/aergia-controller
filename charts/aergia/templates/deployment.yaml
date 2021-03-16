@@ -42,12 +42,32 @@ spec:
       {{- end }}
           command:
           - /manager
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ coalesce .Values.image.tag .Values.imageTag .Chart.AppVersion }}"
           imagePullPolicy: Always
           ports:
           - containerPort: 5000
             name: backend
+          {{- if .Values.templates.enabled}}
+          env:
+          - name: ERROR_FILES_PATH
+            value: "/templates"
+          volumeMounts:
+          - name: {{ include "aergia.fullname" . }}-templates
+            mountPath: "/templates"
+            readOnly: true
+          {{- end}}
           name: manager
+      {{- if .Values.templates.enabled}}
+      volumes:
+        - name: {{ include "aergia.fullname" . }}-templates
+          configMap:
+            name: {{ include "aergia.fullname" . }}-templates
+            items:
+            - key: "error.html"
+              path: "error.html"
+            - key: "unidle.html"
+              path: "unidle.html"
+      {{- end}}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
