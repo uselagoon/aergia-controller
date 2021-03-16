@@ -1,0 +1,30 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aergia.fullname" . }}
+  labels:
+    {{- include "aergia.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: https
+      protocol: TCP
+      name: https
+  selector:
+    {{- include "aergia.selectorLabels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "aergia.fullname" . }}-backend
+  labels:
+    {{- include "aergia.labels" . | nindent 4 }}
+spec:
+  selector:
+    control-plane: controller-manager
+  ports:
+  - name: backend
+    port: 80
+    targetPort: backend
