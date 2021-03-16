@@ -23,7 +23,7 @@ metadata:
     {{- include "aergia.labels" . | nindent 4 }}
 spec:
   selector:
-    control-plane: controller-manager
+    {{- include "aergia.selectorLabels" . | nindent 4 }}
   ports:
   - name: backend
     port: 80
