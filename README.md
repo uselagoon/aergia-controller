@@ -56,3 +56,9 @@ templates:
     </html>
     {{end}}
 ```
+
+# Coming soon
+
+In the future, this controller will also handle the scaling of environments to zero. 
+
+Currently this is handled by a separate service specific to Lagoon, but once decoupled will live with this controller.
