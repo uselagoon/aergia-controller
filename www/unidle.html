@@ -24,6 +24,7 @@
         body {
         text-shadow: 0 .05rem .1rem rgba(0, 0, 0, 0.05);
         box-shadow: inset 0 0 25rem rgba(0, 0, 0, .5);
+        font-size: larger;
         }
         .cover-container {
         max-width: 60em;
@@ -62,15 +63,15 @@
             <div class="text-left">
                 <table class="table table-hover table-bordered">
                     <tr>
-                        <td>Namespace</td>
+                        <td class="w-25">Namespace</td>
                         <th>{{ .Namespace }}</th>
                     </tr>
                     <tr>
-                        <td>Service</td>
+                        <td class="w-25">Service</td>
                         <th>{{ .ServiceName }}</th>
                     </tr>
                     <tr>
-                        <td>Original URI</td>
+                        <td class="w-25">Original URI</td>
                         <th>{{ .OriginalURI }}</th>
                     </tr>
                 </table>
