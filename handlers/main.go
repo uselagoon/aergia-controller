@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	appsv1 "k8s.io/api/apps/v1"
+	networkv1beta1 "k8s.io/api/networking/v1beta1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
@@ -268,4 +269,62 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 			}
 		}
 	}
+	// remove the 503 code from any ingress objects that have it in this namespace
+	h.removeCodeFromIngress(ctx, ns, opLog)
+}
+
+func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog logr.Logger) {
+	// get the ingresses in the namespace
+	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
+		ctrlClient.InNamespace(ns),
+	})
+	ingresses := &networkv1beta1.IngressList{}
+	if err := h.Client.List(ctx, ingresses, listOption); err != nil {
+		opLog.Info(fmt.Sprintf("Unable to get any deployments"))
+		return
+	}
+	for _, ingress := range ingresses.Items {
+		// if the nginx.ingress.kubernetes.io/custom-http-errors annotation is set
+		// then strip out the 503 error code that is there so that
+		// users will see their application errors rather than the loading page
+		if value, ok := ingress.ObjectMeta.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]; ok {
+			newVals := removeStatusCode(value, "503")
+			// if the 503 code was removed from the annotation
+			// then patch it
+			if newVals == nil || *newVals != value {
+				mergePatch, _ := json.Marshal(map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"annotations": map[string]*string{
+							"nginx.ingress.kubernetes.io/custom-http-errors": newVals,
+						},
+					},
+				})
+				patchIngress := ingress.DeepCopy()
+				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.ConstantPatch(types.MergePatchType, mergePatch)); err != nil {
+					// log it but try and patch the rest of the ingressses anyway (some is better than none?)
+					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s", ingress.ObjectMeta.Name))
+				} else {
+					if newVals == nil {
+						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation removed", ingress.ObjectMeta.Name))
+					} else {
+						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation patched with %s", ingress.ObjectMeta.Name, *newVals))
+					}
+				}
+			}
+		}
+	}
+}
+
+func removeStatusCode(codes string, code string) *string {
+	newCodes := []string{}
+	for _, codeValue := range strings.Split(codes, ",") {
+		if codeValue != code {
+			newCodes = append(newCodes, codeValue)
+		}
+	}
+	if len(newCodes) == 0 {
+		return nil
+	}
+	returnCodes := strings.Join(newCodes, ",")
+	return &returnCodes
 }
