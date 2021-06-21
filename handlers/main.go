@@ -26,6 +26,8 @@ import (
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=list;get;watch;patch;update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=list;get;watch
+// +kubebuilder:rbac:groups=*,resources=ingresses,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=*,resources=ingress/status,verbs=get;update;patch
 
 // Client is the client structure for http handlers.
 type Client struct {
