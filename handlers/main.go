@@ -73,6 +73,8 @@ const (
 	ServicePort = "X-Service-Port"
 	// RequestID is a unique ID that identifies the request - same as for backend service
 	RequestID = "X-Request-ID"
+	// AergiaHeader name of the header that contains if this has been served by aergia
+	AergiaHeader = "X-Aergia"
 	// ErrFilesPathVar is the name of the environment variable indicating
 	// the location on disk of files served by the handler.
 	ErrFilesPathVar = "ERROR_FILES_PATH"
@@ -146,6 +148,7 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 			ext = cext[0]
 		}
 		w.Header().Set(ContentType, format)
+		w.Header().Set(AergiaHeader, "true")
 
 		errCode := r.Header.Get(CodeHeader)
 		code, err := strconv.Atoi(errCode)
