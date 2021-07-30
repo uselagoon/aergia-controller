@@ -301,6 +301,8 @@ func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog log
 					"metadata": map[string]interface{}{
 						"annotations": map[string]*string{
 							"nginx.ingress.kubernetes.io/custom-http-errors": newVals,
+							"idling.amazee.io/idled-at":                      nil,
+							"idling.amazee.io/idled":                         nil,
 						},
 					},
 				})
