@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	appsv1 "k8s.io/api/apps/v1"
-	networkv1beta1 "k8s.io/api/networking/v1beta1"
+	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
@@ -283,7 +283,7 @@ func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog log
 	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
 		ctrlClient.InNamespace(ns),
 	})
-	ingresses := &networkv1beta1.IngressList{}
+	ingresses := &networkv1.IngressList{}
 	if err := h.Client.List(ctx, ingresses, listOption); err != nil {
 		opLog.Info(fmt.Sprintf("Unable to get any deployments"))
 		return
