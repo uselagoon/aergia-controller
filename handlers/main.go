@@ -265,7 +265,7 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 					},
 				})
 				scaleDepConf := deploy.DeepCopy()
-				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.ConstantPatch(types.MergePatchType, mergePatch)); err != nil {
+				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
 					opLog.Info(fmt.Sprintf("Error scaling deployment %s", deploy.ObjectMeta.Name))
 				} else {
@@ -307,7 +307,7 @@ func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog log
 					},
 				})
 				patchIngress := ingress.DeepCopy()
-				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.ConstantPatch(types.MergePatchType, mergePatch)); err != nil {
+				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and patch the rest of the ingressses anyway (some is better than none?)
 					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s", ingress.ObjectMeta.Name))
 				} else {
