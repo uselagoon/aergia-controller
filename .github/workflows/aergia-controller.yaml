@@ -52,7 +52,7 @@ jobs:
       with:
         context: .
         load: true
-        tags: amazeeiolagoon/aergia:test-tag
+        tags: amazeeiolocal/aergia:test-tag
     - name: Run Tests
       run: |
         kind load docker-image amazeeiolocal/aergia:test-tag --name chart-testing
