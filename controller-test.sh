@@ -25,7 +25,8 @@ if [ $NUM_PODS -ne 1 ]; then
     echo -e "${GREEN}Install ingress-nginx${NOCOLOR}"
     helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
     kubectl create namespace ingress-nginx
-    helm upgrade --install -n ingress-nginx ingress-nginx ingress-nginx/ingress-nginx -f test-resources/ingress-nginx-values.yaml
+    ## Pinning to 3.36.0 whilst https://github.com/kubernetes/ingress-nginx/releases/tag/controller-v1.0.0 is an issue
+    helm upgrade --install -n ingress-nginx ingress-nginx ingress-nginx/ingress-nginx -f test-resources/ingress-nginx-values.yaml --version 3.36.0
     kubectl get pods --all-namespaces
     echo -e "${GREEN}Wait for ingress-nginx to become ready${NOCOLOR}"
     sleep 60

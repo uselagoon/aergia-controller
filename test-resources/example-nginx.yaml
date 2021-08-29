@@ -57,10 +57,10 @@ spec:
   - host: aergia.localhost
     http:
       paths:
-        - path: "/"
-          pathType: Prefix
-          backend:
-            service:
-              name: example-nginx-svc
-              port:
-                number: 80
+      - path: "/"
+        pathType: Prefix
+        backend:
+          service:
+            name: example-nginx-svc
+            port:
+              number: 80
