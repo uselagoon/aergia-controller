@@ -151,7 +151,7 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 		}
 		w.Header().Set(ContentType, format)
 		w.Header().Set(AergiaHeader, "true")
-		w.Header().Set(CacheControl, "no-cache")
+		w.Header().Set(CacheControl, "private,no-store")
 
 		errCode := r.Header.Get(CodeHeader)
 		code, err := strconv.Atoi(errCode)
