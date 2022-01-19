@@ -75,6 +75,8 @@ const (
 	RequestID = "X-Request-ID"
 	// AergiaHeader name of the header that contains if this has been served by aergia
 	AergiaHeader = "X-Aergia"
+	// CacheControl name of the header that defines the cache control config
+	CacheControl = "Cache-Control"
 	// ErrFilesPathVar is the name of the environment variable indicating
 	// the location on disk of files served by the handler.
 	ErrFilesPathVar = "ERROR_FILES_PATH"
@@ -149,6 +151,7 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 		}
 		w.Header().Set(ContentType, format)
 		w.Header().Set(AergiaHeader, "true")
+		w.Header().Set(CacheControl, "private,no-store")
 
 		errCode := r.Header.Get(CodeHeader)
 		code, err := strconv.Atoi(errCode)
