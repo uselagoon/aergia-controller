@@ -15,6 +15,7 @@ KIND_NAME=chart-testing
 
 tear_down () {
   echo -e "${GREEN}============= TEAR DOWN =============${NOCOLOR}"
+  kubectl get pods -A
   kind delete cluster --name ${KIND_NAME}
 }
 

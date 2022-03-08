@@ -23,11 +23,3 @@ spec:
         args:
         - "--metrics-addr=127.0.0.1:8080"
         - "--enable-leader-election"
-        - "--prometheus-endpoint=http://prometheus:9090"
-        - "--prometheus-interval=4h"
-        - "--pod-check-interval=4"
-        - "--service-cron=0 */4 * * *"
-        - "--cli-cron=5,35 * * * *"
-        - "--enable-cli-idler"
-        - "--enable-service-idler"
-        - "--dry-run"
