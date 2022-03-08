@@ -11,8 +11,10 @@ metadata:
 rules:
 - apiGroups:
   - ""
+  - coordination.k8s.io
   resources:
   - configmaps
+  - leases
   verbs:
   - get
   - list
@@ -191,7 +193,7 @@ spec:
           name: backend
         command:
         - /manager
-        image: amazeeio/aergia:v0.0.1
+        image: amazeeiolocal/aergia:test-tag
         name: manager
         resources:
           limits:

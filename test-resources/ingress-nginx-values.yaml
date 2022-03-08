@@ -1,6 +1,9 @@
 controller:
   # config:
   #   custom-http-errors: 404
+  watchIngressWithoutClass: true
+  ingressClassResource:
+    default: true
   extraArgs:
     default-backend-service: aergia-backend/aergia-backend
   service:

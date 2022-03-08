@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	appsv1 "k8s.io/api/apps/v1"
-	networkv1beta1 "k8s.io/api/networking/v1beta1"
+	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
@@ -268,7 +268,7 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 					},
 				})
 				scaleDepConf := deploy.DeepCopy()
-				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.ConstantPatch(types.MergePatchType, mergePatch)); err != nil {
+				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
 					opLog.Info(fmt.Sprintf("Error scaling deployment %s", deploy.ObjectMeta.Name))
 				} else {
@@ -286,7 +286,7 @@ func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog log
 	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
 		ctrlClient.InNamespace(ns),
 	})
-	ingresses := &networkv1beta1.IngressList{}
+	ingresses := &networkv1.IngressList{}
 	if err := h.Client.List(ctx, ingresses, listOption); err != nil {
 		opLog.Info(fmt.Sprintf("Unable to get any deployments"))
 		return
@@ -310,7 +310,7 @@ func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog log
 					},
 				})
 				patchIngress := ingress.DeepCopy()
-				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.ConstantPatch(types.MergePatchType, mergePatch)); err != nil {
+				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and patch the rest of the ingressses anyway (some is better than none?)
 					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s", ingress.ObjectMeta.Name))
 				} else {
