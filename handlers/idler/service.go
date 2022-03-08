@@ -26,7 +26,7 @@ type serviceIdler struct {
 func (h *IdlerHandler) ServiceIdler() {
 	ctx := context.Background()
 
-	opLog := h.Log.WithName("handlers").WithName("ServiceIdler")
+	opLog := h.Log.WithName("aergia-controller").WithName("ServiceIdler")
 
 	listOption := &client.ListOptions{}
 	// in kubernetes, we can reliably check for the existence of this label so that

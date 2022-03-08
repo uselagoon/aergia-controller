@@ -16,7 +16,7 @@ import (
 // CLIIdler will run the CLI idler process.
 func (h *IdlerHandler) CLIIdler() {
 	ctx := context.Background()
-	opLog := h.Log.WithName("handlers").WithName("CLIIdler")
+	opLog := h.Log.WithName("aergia-controller").WithName("CLIIdler")
 	listOption := &client.ListOptions{}
 	// in kubernetes, we can reliably check for the existence of this label so that
 	// we only check namespaces that have been deployed by a lagoon at one point
