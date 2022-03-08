@@ -15,7 +15,7 @@ KIND_NAME=chart-testing
 
 tear_down () {
   echo -e "${GREEN}============= TEAR DOWN =============${NOCOLOR}"
-  kubectl logs $(kubectl get pods -n aergia-backend --no-headers | awk '{print $1}') -c manager
+  kubectl -n aergia-backend logs $(kubectl get pods -n aergia-backend --no-headers | awk '{print $1}') -c manager
   kubectl get pods --all-namespaces
   kind delete cluster --name ${KIND_NAME}
 }
