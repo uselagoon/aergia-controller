@@ -63,7 +63,7 @@ namespaceSelectorsLabels:
   projectName: "lagoon.sh/project"
   environmentName: "lagoon.sh/environment"
   projectIdling: "lagoon.sh/projectAutoIdle"
-	environmenIdling: "lagoon.sh/environmentAutoIdle"
+	environmentIdling: "lagoon.sh/environmentAutoIdle"
   environmentType: "lagoon.sh/environmentType"
 
 serviceName: "lagoon.sh/service"
