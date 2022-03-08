@@ -27,6 +27,14 @@ spec:
         - /manager
         args:
         - --enable-leader-election
+        - "--prometheus-endpoint=http://prometheus:9090"
+        - "--prometheus-interval=4h"
+        - "--pod-check-interval=4"
+        - "--service-cron=0 */4 * * *"
+        - "--cli-cron=5,35 * * * *"
+        - "--enable-cli-idler"
+        - "--enable-service-idler"
+        - "--dry-run"
         image: controller:latest
         name: manager
         ports:
