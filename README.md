@@ -18,16 +18,6 @@ This could be done using a configmap and volume mount to any directory, then upd
 
 Install via helm
 
-Clone this repo then run the following and select the template version
-```
-./helm-update install-tgz
-```
-
-Alternatively, run it manually with a custom values file
-```
-helm upgrade --install --create-namespace -n aergia aergia charts/aergia-$chartversion.tgz --values values.yaml
-```
-
 ## Custom templates
 If installing via helm, you can use this YAML in your values.yaml file and define the templates there.
 
@@ -56,9 +46,3 @@ templates:
     </html>
     {{end}}
 ```
-
-# Coming soon
-
-In the future, this controller will also handle the scaling of environments to zero. 
-
-Currently this is handled by a separate service specific to Lagoon, but once decoupled will live with this controller.
