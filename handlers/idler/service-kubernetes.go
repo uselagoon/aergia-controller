@@ -20,7 +20,7 @@ import (
 )
 
 // kubernetesServices handles scaling deployments in kubernetes.
-func (h *IdlerHandler) kubernetesServices(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string) {
+func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string) {
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Builds)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace.ObjectMeta.Name),
@@ -154,7 +154,7 @@ func (h *IdlerHandler) kubernetesServices(ctx context.Context, opLog logr.Logger
 	}
 }
 
-func (h *IdlerHandler) idleDeployments(ctx context.Context, opLog logr.Logger, deployments *appsv1.DeploymentList) {
+func (h *Handler) idleDeployments(ctx context.Context, opLog logr.Logger, deployments *appsv1.DeploymentList) {
 	d := []string{}
 	for _, deployment := range deployments.Items {
 		d = append(d, deployment.ObjectMeta.Name)
@@ -204,7 +204,7 @@ func (h *IdlerHandler) idleDeployments(ctx context.Context, opLog logr.Logger, d
 	this annotation is used by the unidler to make sure that the correct information is passed to the custom backend for
 	the nginx ingress controller so that we can handle unidling of the environment properly
 */
-func (h *IdlerHandler) patchIngress(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) error {
+func (h *Handler) patchIngress(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) error {
 	if !h.Selectors.Service.SkipIngressPatch {
 		labelRequirements := generateLabelRequirements(h.Selectors.Service.Ingress)
 		listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{

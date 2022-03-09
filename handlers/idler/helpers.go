@@ -30,8 +30,8 @@ func generateLabelRequirements(selectors []idlerSelector) []labels.Requirement {
 	return labelRequirements
 }
 
-func yamlToIdler(selectors []byte) IdlerData {
-	convertedYaml := IdlerData{}
+func yamlToIdler(selectors []byte) Data {
+	convertedYaml := Data{}
 	_ = yaml.Unmarshal([]byte(selectors), &convertedYaml)
 	return convertedYaml
 }

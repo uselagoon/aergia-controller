@@ -23,10 +23,10 @@ type serviceIdler struct {
 }
 
 // ServiceIdler will run the Service idler process.
-func (h *IdlerHandler) ServiceIdler() {
+func (h *Handler) ServiceIdler() {
 	ctx := context.Background()
 
-	opLog := h.Log.WithName("handlers").WithName("ServiceIdler")
+	opLog := h.Log.WithName("aergia-controller").WithName("ServiceIdler")
 
 	listOption := &client.ListOptions{}
 	// in kubernetes, we can reliably check for the existence of this label so that

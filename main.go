@@ -20,8 +20,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/amazeeio/aergia/handlers/idler"
-	"github.com/amazeeio/aergia/handlers/unidler"
+	"github.com/amazeeio/aergia-controller/handlers/idler"
+	"github.com/amazeeio/aergia-controller/handlers/unidler"
 	prometheusapi "github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/robfig/cron.v2"
@@ -117,7 +117,7 @@ func main() {
 	}
 	defer file.Close()
 	d := yaml.NewDecoder(file)
-	selectors := &idler.IdlerData{}
+	selectors := &idler.Data{}
 	if err := d.Decode(&selectors); err != nil {
 		setupLog.Error(err, "unable to decode selectors yaml")
 		os.Exit(1)
@@ -145,7 +145,7 @@ func main() {
 
 	h := &unidler.Client{
 		Client:          mgr.GetClient(),
-		Log:             ctrl.Log.WithName("controllers-http").WithName("Unidler"),
+		Log:             ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
 		RefreshInterval: refreshInterval,
 		Debug:           debug,
 		RequestCount:    requestCount,
@@ -161,7 +161,7 @@ func main() {
 	}
 
 	// setup the handler with the k8s and lagoon clients
-	handler := &idler.IdlerHandler{
+	handler := &idler.Handler{
 		Client:                  mgr.GetClient(),
 		Log:                     ctrl.Log,
 		PodCheckInterval:        podCheckInterval,
@@ -178,12 +178,14 @@ func main() {
 	// add the cronjobs we need.
 	// CLI Idler
 	if enableCLIIdler {
+		setupLog.Info("starting cli idler")
 		c.AddFunc(cliCron, func() {
 			handler.CLIIdler()
 		})
 	}
 	// Service Idler
 	if enableServiceIdler {
+		setupLog.Info("starting service idler")
 		c.AddFunc(serviceCron, func() {
 			handler.ServiceIdler()
 		})
