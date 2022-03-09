@@ -17,7 +17,7 @@ import (
 )
 
 // kubernetesCLI handles scaling CLI based deployments in kubernetes.
-func (h *IdlerHandler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) {
+func (h *Handler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) {
 	labelRequirements := generateLabelRequirements(h.Selectors.CLI.Builds)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace.ObjectMeta.Name),

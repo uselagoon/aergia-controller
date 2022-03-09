@@ -23,7 +23,7 @@ type serviceIdler struct {
 }
 
 // ServiceIdler will run the Service idler process.
-func (h *IdlerHandler) ServiceIdler() {
+func (h *Handler) ServiceIdler() {
 	ctx := context.Background()
 
 	opLog := h.Log.WithName("aergia-controller").WithName("ServiceIdler")

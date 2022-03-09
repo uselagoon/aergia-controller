@@ -14,7 +14,7 @@ import (
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=list;get;watch;patch
 
 // CLIIdler will run the CLI idler process.
-func (h *IdlerHandler) CLIIdler() {
+func (h *Handler) CLIIdler() {
 	ctx := context.Background()
 	opLog := h.Log.WithName("aergia-controller").WithName("CLIIdler")
 	listOption := &client.ListOptions{}

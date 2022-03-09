@@ -117,7 +117,7 @@ func main() {
 	}
 	defer file.Close()
 	d := yaml.NewDecoder(file)
-	selectors := &idler.IdlerData{}
+	selectors := &idler.Data{}
 	if err := d.Decode(&selectors); err != nil {
 		setupLog.Error(err, "unable to decode selectors yaml")
 		os.Exit(1)
@@ -161,7 +161,7 @@ func main() {
 	}
 
 	// setup the handler with the k8s and lagoon clients
-	handler := &idler.IdlerHandler{
+	handler := &idler.Handler{
 		Client:                  mgr.GetClient(),
 		Log:                     ctrl.Log,
 		PodCheckInterval:        podCheckInterval,

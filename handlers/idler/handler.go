@@ -20,15 +20,15 @@ import (
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups="",resources=pods/log,verbs=list;get
 
-// IdlerHandler handles idling of cli and services.
-type IdlerHandler struct {
+// Handler handles idling of cli and services.
+type Handler struct {
 	Client                  client.Client
 	PodCheckInterval        int
 	Log                     logr.Logger
 	Scheme                  *runtime.Scheme
 	DryRun                  bool
 	Debug                   bool
-	Selectors               *IdlerData
+	Selectors               *Data
 	PrometheusClient        prometheusapi.Client
 	PrometheusCheckInterval string
 }
@@ -39,35 +39,44 @@ type idlerSelector struct {
 	Values   []string           `json:"values,omitempty"`
 }
 
-// IdlerData .
-type IdlerData struct {
-	NamespaceSelectorsLabels struct {
-		ProjectName       string `json:"projectName"`
-		EnvironmentName   string `json:"environmentName"`
-		ProjectIdling     string `json:"projectIdling"`
-		EnvironmentIdling string `json:"environmentIdling"`
-		EnvironmentType   string `json:"environmentType"`
-	}
-	ServiceName string `json:"serviceName"`
-	CLI         struct {
-		SkipBuildCheck   bool            `json:"skipBuildCheck"`
-		SkipCronCheck    bool            `json:"skipCronCheck"`
-		SkipProcessCheck bool            `json:"skipProcessCheck"`
-		Namespace        []idlerSelector `json:"namespace"`
-		Builds           []idlerSelector `json:"builds"`
-		Deployments      []idlerSelector `json:"deployments"`
-		Pods             []idlerSelector `json:"pods"`
-	} `json:"cli"`
-	Service struct {
-		SkipBuildCheck   bool            `json:"skipBuildCheck"`
-		SkipHitCheck     bool            `json:"skipHitCheck"`
-		SkipIngressPatch bool            `json:"skipIngressPatch"`
-		Namespace        []idlerSelector `json:"namespace"`
-		Builds           []idlerSelector `json:"builds"`
-		Deployments      []idlerSelector `json:"deployments"`
-		Pods             []idlerSelector `json:"pods"`
-		Ingress          []idlerSelector `json:"ingress"`
-	} `json:"service"`
+// Data .
+type Data struct {
+	NamespaceSelectorsLabels NamespaceSelectorsLabels `json:"namespaceselectorslabels"`
+	ServiceName              string                   `json:"servicename"`
+	CLI                      CLI                      `json:"cli"`
+	Service                  Service                  `json:"service"`
+}
+
+// NamespaceSelectorsLabels .
+type NamespaceSelectorsLabels struct {
+	ProjectName       string `json:"projectmame"`
+	EnvironmentName   string `json:"environmentmame"`
+	ProjectIdling     string `json:"projectidling"`
+	EnvironmentIdling string `json:"environmentidling"`
+	EnvironmentType   string `json:"environmenttype"`
+}
+
+// CLI .
+type CLI struct {
+	SkipBuildCheck   bool            `json:"skipbuildcheck"`
+	SkipCronCheck    bool            `json:"skipcroncheck"`
+	SkipProcessCheck bool            `json:"skipprocesscheck"`
+	Namespace        []idlerSelector `json:"namespace"`
+	Builds           []idlerSelector `json:"builds"`
+	Deployments      []idlerSelector `json:"deployments"`
+	Pods             []idlerSelector `json:"pods"`
+}
+
+// Service .
+type Service struct {
+	SkipBuildCheck   bool            `json:"skipbuildcheck"`
+	SkipHitCheck     bool            `json:"skipcroncheck"`
+	SkipIngressPatch bool            `json:"skipingresspatch"`
+	Namespace        []idlerSelector `json:"namespace"`
+	Builds           []idlerSelector `json:"builds"`
+	Deployments      []idlerSelector `json:"deployments"`
+	Pods             []idlerSelector `json:"pods"`
+	Ingress          []idlerSelector `json:"ingress"`
 }
 
 func execPod(
