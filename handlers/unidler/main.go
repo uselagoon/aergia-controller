@@ -197,7 +197,7 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 			}
 			file := fmt.Sprintf("%v/error.html", path)
 			if h.Debug == true {
-				opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file)
+				opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 			}
 			tmpl := template.Must(template.ParseFiles(file))
 			tmpl.ExecuteTemplate(w, "base", pageData{
