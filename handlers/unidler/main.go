@@ -237,13 +237,13 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 	})
 	deployments := &appsv1.DeploymentList{}
 	if err := h.Client.List(ctx, deployments, listOption); err != nil {
-		opLog.Info(fmt.Sprintf("Unable to get any deployments"))
+		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", ns))
 		return
 	}
 	for _, deploy := range deployments.Items {
 		// if the idled annotation is true
 		if value, ok := deploy.ObjectMeta.Annotations["idling.amazee.io/idled"]; ok && value == "true" {
-			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v", deploy.ObjectMeta.Name, *deploy.Spec.Replicas))
+			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v - %s", deploy.ObjectMeta.Name, *deploy.Spec.Replicas, ns))
 			if *deploy.Spec.Replicas == 0 {
 				// default to scaling to 1 replica
 				newReplicas := 1
@@ -270,9 +270,9 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 				scaleDepConf := deploy.DeepCopy()
 				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
-					opLog.Info(fmt.Sprintf("Error scaling deployment %s", deploy.ObjectMeta.Name))
+					opLog.Info(fmt.Sprintf("Error scaling deployment %s - %s", deploy.ObjectMeta.Name, ns))
 				} else {
-					opLog.Info(fmt.Sprintf("Deployment %s scaled to %d", deploy.ObjectMeta.Name, newReplicas))
+					opLog.Info(fmt.Sprintf("Deployment %s scaled to %d - %s", deploy.ObjectMeta.Name, newReplicas, ns))
 				}
 			}
 		}
@@ -288,7 +288,7 @@ func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog log
 	})
 	ingresses := &networkv1.IngressList{}
 	if err := h.Client.List(ctx, ingresses, listOption); err != nil {
-		opLog.Info(fmt.Sprintf("Unable to get any deployments"))
+		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", ns))
 		return
 	}
 	for _, ingress := range ingresses.Items {
@@ -312,12 +312,12 @@ func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog log
 				patchIngress := ingress.DeepCopy()
 				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and patch the rest of the ingressses anyway (some is better than none?)
-					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s", ingress.ObjectMeta.Name))
+					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s - %s", ingress.ObjectMeta.Name, ns))
 				} else {
 					if newVals == nil {
-						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation removed", ingress.ObjectMeta.Name))
+						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation removed - %s", ingress.ObjectMeta.Name, ns))
 					} else {
-						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation patched with %s", ingress.ObjectMeta.Name, *newVals))
+						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation patched with %s - %s", ingress.ObjectMeta.Name, *newVals, ns))
 					}
 				}
 			}
