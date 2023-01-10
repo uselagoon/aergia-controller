@@ -14,7 +14,6 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	appsv1 "k8s.io/api/apps/v1"
 	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -92,16 +91,17 @@ func Run(h *Client, setupLog logr.Logger) {
 	if os.Getenv(ErrFilesPathVar) != "" {
 		errFilesPath = os.Getenv(ErrFilesPathVar)
 	}
-	http.HandleFunc("/favicon.ico", faviconHandler)
-	http.HandleFunc("/", h.errorHandler(errFilesPath))
 
-	http.Handle("/metrics", promhttp.Handler())
+	r := http.NewServeMux()
+	r.HandleFunc("/favicon.ico", faviconHandler)
+	r.HandleFunc("/", h.errorHandler(errFilesPath))
+	http.Handle("/", r)
 
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
-
-	err := http.ListenAndServe(fmt.Sprintf(":5000"), nil)
+	httpServer := &http.Server{
+		Addr:    ":5000",
+		Handler: r,
+	}
+	err := httpServer.ListenAndServe()
 	if err != nil {
 		setupLog.Error(err, "unable to start http server")
 		os.Exit(1)
@@ -109,6 +109,7 @@ func Run(h *Client, setupLog logr.Logger) {
 }
 
 func faviconHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set(AergiaHeader, "true")
 	w.Header().Set("Content-Type", "image/x-icon")
 	w.Header().Set("Cache-Control", "public, max-age=7776000")
 	fmt.Fprintln(w, fmt.Sprintf("%s\n", favicon))
