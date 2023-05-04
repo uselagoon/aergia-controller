@@ -28,8 +28,8 @@ import (
 // +kubebuilder:rbac:groups=*,resources=ingresses,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=*,resources=ingress/status,verbs=get;update;patch
 
-// Client is the client structure for http handlers.
-type Client struct {
+// Unidler is the client structure for http handlers.
+type Unidler struct {
 	Client          ctrlClient.Client
 	Log             logr.Logger
 	RefreshInterval int
@@ -86,7 +86,7 @@ var (
 )
 
 // Run runs the http server.
-func Run(h *Client, setupLog logr.Logger) {
+func Run(h *Unidler, setupLog logr.Logger) {
 	errFilesPath := "/www"
 	if os.Getenv(ErrFilesPathVar) != "" {
 		errFilesPath = os.Getenv(ErrFilesPathVar)
@@ -115,7 +115,7 @@ func faviconHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, fmt.Sprintf("%s\n", favicon))
 }
 
-func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Request) {
+func (h *Unidler) errorHandler(path string) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		opLog := h.Log.WithValues("custom-default-backend", "request")
@@ -168,13 +168,19 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 			// if a namespace exists, it means that the custom-http-errors code is defined in the ingress object
 			// so do something with that here, like kickstart the idler process to unidle targets
 			opLog.Info(fmt.Sprintf("Got request in namespace %s", ns))
-			// fmt.Fprintf(w, "namespace: %v", ns)
+
 			file := fmt.Sprintf("%v/unidle.html", path)
+			forced := h.checkForceIdled(ctx, ns, opLog)
+			if forced {
+				file = fmt.Sprintf("%v/forced.html", path)
+			}
 			if h.Debug == true {
 				opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 			}
 			// actually do the unidling here
-			go h.unIdle(ctx, ns, opLog)
+			if !forced {
+				go h.UnIdle(ctx, ns, opLog)
+			}
 			// then return the unidle template to the user
 			tmpl := template.Must(template.ParseFiles(file))
 			tmpl.ExecuteTemplate(w, "base", pageData{
@@ -190,7 +196,6 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 				RequestID:       r.Header.Get(RequestID),
 				RefreshInterval: h.RefreshInterval,
 			})
-
 		} else {
 			// otherwise just handle the generic http responses here
 			if !strings.HasPrefix(ext, ".") {
@@ -227,7 +232,27 @@ func (h *Client) errorHandler(path string) func(http.ResponseWriter, *http.Reque
 	}
 }
 
-func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
+func (h *Unidler) checkForceIdled(ctx context.Context, ns string, opLog logr.Logger) bool {
+	// get the deployments in the namespace if they have the `watch=true` label
+	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/force-scaled", selection.Equals, []string{"true"})
+	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
+		ctrlClient.InNamespace(ns),
+		client.MatchingLabelsSelector{
+			Selector: labels.NewSelector().Add(*labelRequirements1),
+		},
+	})
+	deployments := &appsv1.DeploymentList{}
+	if err := h.Client.List(ctx, deployments, listOption); err != nil {
+		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", ns))
+		return false
+	}
+	if len(deployments.Items) > 0 {
+		return true
+	}
+	return false
+}
+
+func (h *Unidler) UnIdle(ctx context.Context, ns string, opLog logr.Logger) {
 	// get the deployments in the namespace if they have the `watch=true` label
 	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/watch", selection.Equals, []string{"true"})
 	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
@@ -265,7 +290,9 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 					},
 					"metadata": map[string]interface{}{
 						"labels": map[string]*string{
-							"idling.amazee.io/idled": nil,
+							"idling.amazee.io/idled":        nil,
+							"idling.amazee.io/force-idled":  nil,
+							"idling.amazee.io/force-scaled": nil,
 						},
 						"annotations": map[string]*string{
 							"idling.amazee.io/idled-at": nil,
@@ -287,7 +314,7 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 	h.removeCodeFromIngress(ctx, ns, opLog)
 }
 
-func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog logr.Logger) {
+func (h *Unidler) removeCodeFromIngress(ctx context.Context, ns string, opLog logr.Logger) {
 	// get the ingresses in the namespace
 	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
 		ctrlClient.InNamespace(ns),

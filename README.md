@@ -10,7 +10,7 @@ This backend is designed to serve generic error handling for any http error. The
 
 ## Change the default templates
 
-By using the environment variable `ERROR_FILES_PATH`, and pointing to a location that contains the two templates `error.html` and `unidle.html`, you can change what is shown to the end user.
+By using the environment variable `ERROR_FILES_PATH`, and pointing to a location that contains the three templates `error.html`, `forced.html`, and `unidle.html`, you can change what is shown to the end user.
 
 This could be done using a configmap and volume mount to any directory, then update the `ERROR_FILES_PATH` to this directory.
 
@@ -21,7 +21,7 @@ Install via helm (https://github.com/amazeeio/charts/tree/main/charts/aergia)
 ## Custom templates
 If installing via helm, you can use this YAML in your values.yaml file and define the templates there.
 
-> See `www/error.html` and `www/unidle.html` for inspiration
+> See `www/error.html`, `www/force.html`, and `www/unidle.html` for inspiration
 
 ```
 templates:
@@ -45,10 +45,21 @@ templates:
     </body>
     </html>
     {{end}}
+  forced: |
+    {{define "base"}}
+    <html>
+    <head>
+    <meta http-equiv="refresh" content="{{ .RefreshInterval }}">
+    </head>
+    <body>
+    {{ .ErrorCode }} {{ .ErrorMessage }}
+    </body>
+    </html>
+    {{end}}
 ```
 
 ## Prometheus
-The idler uses prometheus to check if there has been hits to the ingress in the last defined interval
+The idler uses prometheus to check if there has been hits to the ingress in the last defined interval, it only checks status codes of 200.
 By default it will talk to a prometheus in cluster `http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090` but this is adjustable with a flag (and via helm values).
 
 ### Requirements
