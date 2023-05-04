@@ -243,7 +243,9 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 	}
 	for _, deploy := range deployments.Items {
 		// if the idled annotation is true
-		if value, ok := deploy.ObjectMeta.Annotations["idling.amazee.io/idled"]; ok && value == "true" {
+		av, aok := deploy.ObjectMeta.Annotations["idling.amazee.io/idled"]
+		lv, lok := deploy.ObjectMeta.Labels["idling.amazee.io/idled"]
+		if aok && av == "true" || lok && lv == "true" {
 			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v - %s", deploy.ObjectMeta.Name, *deploy.Spec.Replicas, ns))
 			if *deploy.Spec.Replicas == 0 {
 				// default to scaling to 1 replica
@@ -262,6 +264,9 @@ func (h *Client) unIdle(ctx context.Context, ns string, opLog logr.Logger) {
 						"replicas": newReplicas,
 					},
 					"metadata": map[string]interface{}{
+						"labels": map[string]*string{
+							"idling.amazee.io/idled": nil,
+						},
 						"annotations": map[string]*string{
 							"idling.amazee.io/idled-at": nil,
 							"idling.amazee.io/idled":    nil,
@@ -303,6 +308,9 @@ func (h *Client) removeCodeFromIngress(ctx context.Context, ns string, opLog log
 			if newVals == nil || *newVals != value {
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
+						"labels": map[string]*string{
+							"idling.amazee.io/idled": nil,
+						},
 						"annotations": map[string]*string{
 							"nginx.ingress.kubernetes.io/custom-http-errors": newVals,
 							"idling.amazee.io/idled-at":                      nil,

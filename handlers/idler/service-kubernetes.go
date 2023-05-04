@@ -178,12 +178,12 @@ func (h *Handler) idleDeployments(ctx context.Context, opLog logr.Logger, deploy
 					"labels": map[string]string{
 						// add the watch label so that the unidler knows to look at it
 						"idling.amazee.io/watch": "true",
+						"idling.amazee.io/idled": "true",
 					},
 					"annotations": map[string]string{
 						// add these annotations so user knows to look at them
 						"idling.amazee.io/idled-at":        time.Now().Format(time.RFC3339),
 						"idling.amazee.io/unidle-replicas": strconv.FormatInt(int64(*idleReplicas), 10),
-						"idling.amazee.io/idled":           "true",
 					},
 				},
 			})
@@ -224,6 +224,9 @@ func (h *Handler) patchIngress(ctx context.Context, opLog logr.Logger, namespace
 				ingressCopy := ingress.DeepCopy()
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
+						"labels": map[string]string{
+							"idling.amazee.io/idled": "true",
+						},
 						"annotations": map[string]string{
 							// add the custom-http-errors annotation so that the unidler knows to handle this ingress
 							"nginx.ingress.kubernetes.io/custom-http-errors": "503",

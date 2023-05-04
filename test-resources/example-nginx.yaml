@@ -25,8 +25,8 @@ metadata:
   namespace: example-nginx
   labels:
     idling.amazee.io/watch: 'true'
-  annotations:
     idling.amazee.io/idled: 'true'
+  annotations:
     idling.amazee.io/unidle-replicas: '3'
 spec:
   replicas: 0
