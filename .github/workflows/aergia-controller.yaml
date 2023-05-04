@@ -13,10 +13,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kindest_node_version: [v1.21.1, v1.22.0]
+        kindest_node_version: [v1.21.12, v1.22.9, v1.23.6, v1.24.7]
         experimental: [false]
         include:
-          - kindest_node_version: v1.23.0
+          - kindest_node_version: v1.25.0
             experimental: true
     steps:
     - name: Checkout
