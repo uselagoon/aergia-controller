@@ -41,16 +41,16 @@ sleep 15
 echo -e "${GREEN}Check there are no example-nginx pods${NOCOLOR}"
 kubectl -n example-nginx get pods
 echo -e "${GREEN}Request example-nginx app (should be 503)${NOCOLOR}"
-if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "503 Service Unavailable"; then
+if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "503 Service"; then
     sleep 15
     echo -e "${GREEN}Check there are 3 example-nginx pods${NOCOLOR}"
     kubectl -n example-nginx get pods
     echo -e "${GREEN}Request example-nginx app (should be 200)${NOCOLOR}"
     if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "200 OK"; then
-        echo -e "${GREEN}Tear down aergia cluster${NOCOLOR}"
-        tear_down
+        echo -e "${GREEN}Unidled${NOCOLOR}"
     else
         echo -e "${RED}Curl did not return 200${NOCOLOR}"
+        tear_down
         exit 1
     fi
 else
@@ -59,25 +59,25 @@ else
     exit 1
 fi
 
-echo -e "${GREEN}Check that there are 3 example-nginx pods${NOCOLOR}"
+echo -e "${GREEN}Check that force-idle label idles an environment${NOCOLOR}"
 kubectl -n example-nginx get pods
 echo -e "${GREEN}Request example-nginx app (should be 200)${NOCOLOR}"
 if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "200 OK"; then
-    kubectl -n example-nginx patch namespace --type=merge --patch '{"metadata":{"labels":{"idling.amazee.io/force-idled":"true"}}}'
+    kubectl patch namespace example-nginx --type=merge --patch '{"metadata":{"labels":{"idling.amazee.io/force-idled":"true"}}}'
     sleep 15
     echo -e "${GREEN}Check there are 0 example-nginx pods${NOCOLOR}"
     kubectl -n example-nginx get pods
     echo -e "${GREEN}Request example-nginx app (should be 503)${NOCOLOR}"
-    if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "503 Service Unavailable"; then
+    if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "503 Service"; then
         sleep 15
         echo -e "${GREEN}Check there are 3 example-nginx pods${NOCOLOR}"
         kubectl -n example-nginx get pods
         echo -e "${GREEN}Request example-nginx app (should be 200)${NOCOLOR}"
         if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "200 OK"; then
-            echo -e "${GREEN}Tear down aergia cluster${NOCOLOR}"
-            tear_down
+            echo -e "${GREEN}Unidled${NOCOLOR}"
         else
             echo -e "${RED}Curl did not return 200${NOCOLOR}"
+            tear_down
             exit 1
         fi
     else
@@ -91,24 +91,24 @@ else
     exit 1
 fi
 
-echo -e "${GREEN}Check that there are 3 example-nginx pods${NOCOLOR}"
+echo -e "${GREEN}Check that an idled environment can be unidled by label${NOCOLOR}"
 kubectl -n example-nginx get pods
 echo -e "${GREEN}Request example-nginx app (should be 200)${NOCOLOR}"
 if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "200 OK"; then
-    kubectl -n example-nginx patch namespace --type=merge --patch '{"metadata":{"labels":{"idling.amazee.io/force-idled":"true"}}}'
+    kubectl patch namespace  example-nginx --type=merge --patch '{"metadata":{"labels":{"idling.amazee.io/force-idled":"true"}}}'
     sleep 15
     echo -e "${GREEN}Check there are 0 example-nginx pods${NOCOLOR}"
     kubectl -n example-nginx get pods
-    kubectl -n example-nginx patch namespace --type=merge --patch '{"metadata":{"labels":{"idling.amazee.io/unidle":"true"}}}'
+    kubectl patch namespace  example-nginx --type=merge --patch '{"metadata":{"labels":{"idling.amazee.io/unidle":"true"}}}'
     sleep 15
     echo -e "${GREEN}Check there are 3 example-nginx pods${NOCOLOR}"
     kubectl -n example-nginx get pods
     echo -e "${GREEN}Request example-nginx app (should be 200)${NOCOLOR}"
     if curl -s -I -H "Host: aergia.localhost" http://localhost:8090/| grep -q "200 OK"; then
-        echo -e "${GREEN}Tear down aergia cluster${NOCOLOR}"
-        tear_down
+        echo -e "${GREEN}Unidled${NOCOLOR}"
     else
         echo -e "${RED}Curl did not return 200${NOCOLOR}"
+        tear_down
         exit 1
     fi
 else
@@ -116,3 +116,5 @@ else
     tear_down
     exit 1
 fi
+
+tear_down

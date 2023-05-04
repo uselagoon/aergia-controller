@@ -45,7 +45,7 @@ type IdlingReconciler struct {
 // +kubebuilder:rbac:groups=*,resources=*,verbs=*
 
 func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	opLog := r.Log.WithValues("initconfig", req.NamespacedName)
+	opLog := r.Log.WithValues("idler", req.NamespacedName)
 
 	var namespace corev1.Namespace
 	if err := r.Get(ctx, req.NamespacedName, &namespace); err != nil {
