@@ -9,16 +9,19 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -28,6 +31,11 @@ import (
 // +kubebuilder:rbac:groups=*,resources=ingresses,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=*,resources=ingress/status,verbs=get;update;patch
 
+const (
+	defaultPollDuration = 1 * time.Second
+	defaultPollTimeout  = 90 * time.Second
+)
+
 // Unidler is the client structure for http handlers.
 type Unidler struct {
 	Client          ctrlClient.Client
@@ -36,6 +44,7 @@ type Unidler struct {
 	Debug           bool
 	RequestCount    *prometheus.CounterVec
 	RequestDuration *prometheus.HistogramVec
+	Locks           sync.Map
 }
 
 type pageData struct {
@@ -121,7 +130,6 @@ func (h *Unidler) errorHandler(path string) func(http.ResponseWriter, *http.Requ
 		opLog := h.Log.WithValues("custom-default-backend", "request")
 		start := time.Now()
 		ext := "html"
-
 		// if debug is enabled, then set the headers in the response too
 		if os.Getenv("DEBUG") == "true" {
 			w.Header().Set(FormatHeader, r.Header.Get(FormatHeader))
@@ -170,16 +178,21 @@ func (h *Unidler) errorHandler(path string) func(http.ResponseWriter, *http.Requ
 			opLog.Info(fmt.Sprintf("Got request in namespace %s", ns))
 
 			file := fmt.Sprintf("%v/unidle.html", path)
-			forced := h.checkForceIdled(ctx, ns, opLog)
-			if forced {
+			forceScaled := h.checkForceScaled(ctx, ns, opLog)
+			if forceScaled {
+				// if this has been force scaled, return the force scaled landing page
 				file = fmt.Sprintf("%v/forced.html", path)
+			} else {
+				// only unidle environments that aren't force scaled
+				// actually do the unidling here, lock to prevent multiple unidle operations from running
+				_, ok := h.Locks.Load(ns)
+				if !ok {
+					_, _ = h.Locks.LoadOrStore(ns, ns)
+					go h.UnIdle(ctx, ns, opLog)
+				}
 			}
 			if h.Debug == true {
 				opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
-			}
-			// actually do the unidling here
-			if !forced {
-				go h.UnIdle(ctx, ns, opLog)
 			}
 			// then return the unidle template to the user
 			tmpl := template.Must(template.ParseFiles(file))
@@ -232,7 +245,7 @@ func (h *Unidler) errorHandler(path string) func(http.ResponseWriter, *http.Requ
 	}
 }
 
-func (h *Unidler) checkForceIdled(ctx context.Context, ns string, opLog logr.Logger) bool {
+func (h *Unidler) checkForceScaled(ctx context.Context, ns string, opLog logr.Logger) bool {
 	// get the deployments in the namespace if they have the `watch=true` label
 	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/force-scaled", selection.Equals, []string{"true"})
 	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
@@ -253,6 +266,7 @@ func (h *Unidler) checkForceIdled(ctx context.Context, ns string, opLog logr.Log
 }
 
 func (h *Unidler) UnIdle(ctx context.Context, ns string, opLog logr.Logger) {
+	defer h.Locks.Delete(ns)
 	// get the deployments in the namespace if they have the `watch=true` label
 	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/watch", selection.Equals, []string{"true"})
 	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
@@ -309,6 +323,14 @@ func (h *Unidler) UnIdle(ctx context.Context, ns string, opLog logr.Logger) {
 				}
 			}
 		}
+	}
+	// now wait for the pods of these deployments to be ready
+	// this could still result in 503 for users until the resulting services/endpoints are active and receiving traffic
+	for _, deploy := range deployments.Items {
+		opLog.Info(fmt.Sprintf("Waiting for %s to be running - %s", deploy.ObjectMeta.Name, ns))
+		timeout, cancel := context.WithTimeout(ctx, defaultPollTimeout)
+		defer cancel()
+		wait.PollUntilWithContext(timeout, defaultPollDuration, h.hasRunningPod(ctx, ns, deploy.Name))
 	}
 	// remove the 503 code from any ingress objects that have it in this namespace
 	h.removeCodeFromIngress(ctx, ns, opLog)
@@ -373,4 +395,26 @@ func removeStatusCode(codes string, code string) *string {
 	}
 	returnCodes := strings.Join(newCodes, ",")
 	return &returnCodes
+}
+
+func (h *Unidler) hasRunningPod(ctx context.Context, namespace, deployment string) wait.ConditionWithContextFunc {
+	return func(context.Context) (bool, error) {
+		var d appsv1.Deployment
+		if err := h.Client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: deployment}, &d); err != nil {
+			return false, err
+		}
+		var pods corev1.PodList
+		listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
+			client.MatchingLabelsSelector{
+				Selector: labels.SelectorFromSet(d.Spec.Selector.MatchLabels),
+			},
+		})
+		if err := h.Client.List(ctx, &pods, listOption); err != nil {
+			return false, err
+		}
+		if len(pods.Items) == 0 {
+			return false, nil
+		}
+		return pods.Items[0].Status.Phase == "Running", nil
+	}
 }

@@ -165,7 +165,7 @@ func main() {
 	// setup the idler with the k8s and lagoon clients
 	idler := &idler.Idler{
 		Client:                  mgr.GetClient(),
-		Log:                     ctrl.Log,
+		Log:                     ctrl.Log.WithName("aergia-controller").WithName("ServiceIdler"),
 		PodCheckInterval:        podCheckInterval,
 		PrometheusClient:        prometheusClient,
 		PrometheusCheckInterval: prometheusCheckInterval,
