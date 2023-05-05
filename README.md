@@ -8,6 +8,19 @@ This controller replaces the ingress-nginx default backend with this custom back
 
 This backend is designed to serve generic error handling for any http error. The backend can also leverage [custom errors](https://kubernetes.github.io/ingress-nginx/user-guide/custom-errors/), which can be used to check the kubernetes api to see if the namespace needs to be scaled from zero.
 
+## Usage
+
+An environment can be force idled, force scaled, or unidled using labels on the namespace. All actions still respect the label selectors, but forced actions will bypass any hits checks
+
+### Force Idled
+To force idle a namespace, you can label the namespace using `idling.amazee.io/force-idled=true`. This will cause the environment to be immediately scaled down, but the next request to the ingress in the namespace will unidle the namespace
+
+### Force Scaled
+To force scale a namespace, you can label the namespace using `idling.amazee.io/force-scaled=true`. This will cause the environment to be immediately scaled down, but the next request to the ingress in the namespace will *NOT* unidle the namespace. A a deployment will be required to unidle this namespace
+
+### Unidle
+To unidle a namespace, you can label the namespace using `idling.amazee.io/unidle=true`. This will cause the environment to be scaled back up to its previous state.
+
 ## Change the default templates
 
 By using the environment variable `ERROR_FILES_PATH`, and pointing to a location that contains the three templates `error.html`, `forced.html`, and `unidle.html`, you can change what is shown to the end user.
