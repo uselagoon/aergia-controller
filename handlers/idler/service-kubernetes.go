@@ -19,8 +19,8 @@ import (
 	prometheusmodel "github.com/prometheus/common/model"
 )
 
-// kubernetesServices handles scaling deployments in kubernetes.
-func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string) {
+// KubernetesServiceIdler handles scaling deployments in kubernetes.
+func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string, forceIdle, forceScale bool) {
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Builds)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace.ObjectMeta.Name),
@@ -102,9 +102,9 @@ func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, nam
 			}
 		}
 		// we the idle flag, then proceed to check the router logs and eventually idle the environment
-		if idle {
+		if idle || forceIdle || forceScale {
 			numHits := 0
-			if !h.Selectors.Service.SkipHitCheck {
+			if !h.Selectors.Service.SkipHitCheck && !forceIdle && !forceScale {
 				opLog.Info(fmt.Sprintf("Environment marked for idling, checking routerlogs for hits"))
 				// query prometheus for hits to ingress resources in this namespace
 				v1api := prometheusapiv1.NewAPI(h.PrometheusClient)
@@ -112,7 +112,7 @@ func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, nam
 				defer cancel()
 				// get the number of requests to any ingress in the exported namespace by status code
 				promQuery := fmt.Sprintf(
-					"round(sum(increase(nginx_ingress_controller_requests{exported_namespace=\"%s\"}[%s])) by (status))",
+					`round(sum(increase(nginx_ingress_controller_requests{exported_namespace="%s",status="200"}[%s])) by (status))`,
 					namespace.ObjectMeta.Name,
 					h.PrometheusCheckInterval,
 				)
@@ -149,12 +149,12 @@ func (h *Handler) kubernetesServices(ctx context.Context, opLog logr.Logger, nam
 				return
 			}
 			opLog.Info(fmt.Sprintf("Environment will be idled"))
-			h.idleDeployments(ctx, opLog, deployments)
+			h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale)
 		}
 	}
 }
 
-func (h *Handler) idleDeployments(ctx context.Context, opLog logr.Logger, deployments *appsv1.DeploymentList) {
+func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployments *appsv1.DeploymentList, forceIdle, forceScale bool) {
 	d := []string{}
 	for _, deployment := range deployments.Items {
 		d = append(d, deployment.ObjectMeta.Name)
@@ -170,16 +170,23 @@ func (h *Handler) idleDeployments(ctx context.Context, opLog logr.Logger, deploy
 				idleReplicas = deployment.Spec.Replicas
 			}
 			scaleDeployment := deployment.DeepCopy()
+			labels := map[string]string{
+				// add the watch label so that the unidler knows to look at it
+				"idling.amazee.io/watch": "true",
+				"idling.amazee.io/idled": "true",
+			}
+			if forceIdle {
+				labels["idling.amazee.io/force-idled"] = "true"
+			}
+			if forceScale {
+				labels["idling.amazee.io/force-scaled"] = "true"
+			}
 			mergePatch, _ := json.Marshal(map[string]interface{}{
 				"spec": map[string]interface{}{
 					"replicas": 0,
 				},
 				"metadata": map[string]interface{}{
-					"labels": map[string]string{
-						// add the watch label so that the unidler knows to look at it
-						"idling.amazee.io/watch": "true",
-						"idling.amazee.io/idled": "true",
-					},
+					"labels": labels,
 					"annotations": map[string]string{
 						// add these annotations so user knows to look at them
 						"idling.amazee.io/idled-at":        time.Now().Format(time.RFC3339),
@@ -204,7 +211,7 @@ func (h *Handler) idleDeployments(ctx context.Context, opLog logr.Logger, deploy
 	this annotation is used by the unidler to make sure that the correct information is passed to the custom backend for
 	the nginx ingress controller so that we can handle unidling of the environment properly
 */
-func (h *Handler) patchIngress(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) error {
+func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) error {
 	if !h.Selectors.Service.SkipIngressPatch {
 		labelRequirements := generateLabelRequirements(h.Selectors.Service.Ingress)
 		listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{

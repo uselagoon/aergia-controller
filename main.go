@@ -18,12 +18,14 @@ package main
 import (
 	"flag"
 	"os"
-	"strconv"
 
+	"github.com/amazeeio/aergia-controller/controllers"
 	"github.com/amazeeio/aergia-controller/handlers/idler"
 	"github.com/amazeeio/aergia-controller/handlers/unidler"
+	u "github.com/amazeeio/aergia-controller/handlers/unidler"
 	prometheusapi "github.com/prometheus/client_golang/api"
 	"github.com/prometheus/client_golang/prometheus"
+	variables "github.com/uselagoon/machinery/utils/variables"
 	"gopkg.in/robfig/cron.v2"
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -79,7 +81,7 @@ func main() {
 	flag.StringVar(&cliCron, "cli-idler-cron", "5,35 * * * *",
 		"The cron definition for how often to run the cli idling process.")
 	flag.StringVar(&serviceCron, "service-idler-cron", "0 */4 * * *",
-		"The cron definition for how often to run the cli idling process.")
+		"The cron definition for how often to run the service idling process.")
 	flag.StringVar(&prometheusAddress, "prometheus-endpoint", "http://monitoring-kube-prometheus-prometheus.monitoring.svc:9090",
 		"The address for the prometheus endpoint to check against")
 	flag.StringVar(&prometheusCheckInterval, "prometheus-interval", "4h",
@@ -92,18 +94,18 @@ func main() {
 	flag.BoolVar(&enableServiceIdler, "enable-service-idler", true, "Flag to enable service idler.")
 	flag.Parse()
 
-	selectorsFile = getEnv("SELECTORS_YAML_FILE", selectorsFile)
+	selectorsFile = variables.GetEnv("SELECTORS_YAML_FILE", selectorsFile)
 
-	dryRun = getEnvBool("DRY_RUN", dryRun)
+	dryRun = variables.GetEnvBool("DRY_RUN", dryRun)
 
-	cliCron = getEnv("CLI_CRON", cliCron)
-	serviceCron = getEnv("SERVICE_CRON", serviceCron)
-	enableServiceIdler = getEnvBool("ENABLE_SERVICE_IDLER", enableServiceIdler)
-	enableCLIIdler = getEnvBool("ENABLE_CLI_IDLER", enableCLIIdler)
-	podCheckInterval = getEnvInt("POD_CHECK_INTERVAL", podCheckInterval)
+	cliCron = variables.GetEnv("CLI_CRON", cliCron)
+	serviceCron = variables.GetEnv("SERVICE_CRON", serviceCron)
+	enableServiceIdler = variables.GetEnvBool("ENABLE_SERVICE_IDLER", enableServiceIdler)
+	enableCLIIdler = variables.GetEnvBool("ENABLE_CLI_IDLER", enableCLIIdler)
+	podCheckInterval = variables.GetEnvInt("POD_CHECK_INTERVAL", podCheckInterval)
 
-	prometheusAddress = getEnv("PROMETHEUS_ADDRESS", prometheusAddress)
-	prometheusCheckInterval = getEnv("PROMETHEUS_CHECK_INTERVAL", prometheusCheckInterval)
+	prometheusAddress = variables.GetEnv("PROMETHEUS_ADDRESS", prometheusAddress)
+	prometheusCheckInterval = variables.GetEnv("PROMETHEUS_CHECK_INTERVAL", prometheusCheckInterval)
 
 	ctrl.SetLogger(zap.New(func(o *zap.Options) {
 		o.Development = true
@@ -143,7 +145,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	h := &unidler.Client{
+	unidler := &unidler.Unidler{
 		Client:          mgr.GetClient(),
 		Log:             ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
 		RefreshInterval: refreshInterval,
@@ -160,10 +162,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// setup the handler with the k8s and lagoon clients
-	handler := &idler.Handler{
+	// setup the idler with the k8s and lagoon clients
+	idler := &idler.Idler{
 		Client:                  mgr.GetClient(),
-		Log:                     ctrl.Log,
+		Log:                     ctrl.Log.WithName("aergia-controller").WithName("ServiceIdler"),
 		PodCheckInterval:        podCheckInterval,
 		PrometheusClient:        prometheusClient,
 		PrometheusCheckInterval: prometheusCheckInterval,
@@ -180,14 +182,14 @@ func main() {
 	if enableCLIIdler {
 		setupLog.Info("starting cli idler")
 		c.AddFunc(cliCron, func() {
-			handler.CLIIdler()
+			idler.CLIIdler()
 		})
 	}
 	// Service Idler
 	if enableServiceIdler {
 		setupLog.Info("starting service idler")
 		c.AddFunc(serviceCron, func() {
-			handler.ServiceIdler()
+			idler.ServiceIdler()
 		})
 	}
 	// start crons.
@@ -195,38 +197,22 @@ func main() {
 
 	// +kubebuilder:scaffold:builder
 	setupLog.Info("starting unidler listening")
-	go unidler.Run(h, setupLog)
+	go u.Run(unidler, setupLog)
+
+	if err = (&controllers.IdlingReconciler{
+		Client:  mgr.GetClient(),
+		Log:     ctrl.Log.WithName("controllers").WithName("Idling"),
+		Scheme:  mgr.GetScheme(),
+		Idler:   idler,
+		Unidler: unidler,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Idling")
+		os.Exit(1)
+	}
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
-}
-
-func getEnvInt(key string, fallback int) int {
-	if value, ok := os.LookupEnv(key); ok {
-		podInterval, err := strconv.Atoi(value)
-		if err != nil {
-			return podInterval
-		}
-	}
-	return fallback
-}
-
-// accepts fallback values 1, t, T, TRUE, true, True, 0, f, F, FALSE, false, False
-// anything else is false.
-func getEnvBool(key string, fallback bool) bool {
-	if value, ok := os.LookupEnv(key); ok {
-		rVal, _ := strconv.ParseBool(value)
-		return rVal
-	}
-	return fallback
 }

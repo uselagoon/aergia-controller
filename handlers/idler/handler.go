@@ -20,8 +20,8 @@ import (
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups="",resources=pods/log,verbs=list;get
 
-// Handler handles idling of cli and services.
-type Handler struct {
+// Idler handles idling of cli and services.
+type Idler struct {
 	Client                  client.Client
 	PodCheckInterval        int
 	Log                     logr.Logger

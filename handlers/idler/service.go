@@ -11,7 +11,7 @@ import (
 
 // +kubebuilder:rbac:groups="",resources=services,verbs=list;get;watch;patch
 // +kubebuilder:rbac:groups="",resources=endpoints,verbs=list;get;watch;patch
-// +kubebuilder:rbac:groups="",resources=namespaces,verbs=list;get;watch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=list;get;watch;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=list;get;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=list;get;watch;patch
 // +kubebuilder:rbac:groups=*,resources=ingresses,verbs=get;list;watch;update;patch
@@ -23,10 +23,10 @@ type serviceIdler struct {
 }
 
 // ServiceIdler will run the Service idler process.
-func (h *Handler) ServiceIdler() {
+func (h *Idler) ServiceIdler() {
 	ctx := context.Background()
 
-	opLog := h.Log.WithName("aergia-controller").WithName("ServiceIdler")
+	opLog := h.Log
 
 	listOption := &client.ListOptions{}
 	// in kubernetes, we can reliably check for the existence of this label so that
@@ -56,7 +56,7 @@ func (h *Handler) ServiceIdler() {
 					WithValues("environment", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
 					WithValues("dry-run", h.DryRun)
 				envOpLog.Info(fmt.Sprintf("Checking namespace"))
-				h.kubernetesServices(ctx, envOpLog, namespace, namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName])
+				h.KubernetesServiceIdler(ctx, envOpLog, namespace, namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], false, false)
 			} else {
 				if h.Debug {
 					opLog.Info(fmt.Sprintf("skipping namespace %s; type is %s, autoidle values are env:%s proj:%s",
