@@ -34,7 +34,7 @@ Install via helm (https://github.com/amazeeio/charts/tree/main/charts/aergia)
 ## Custom templates
 If installing via helm, you can use this YAML in your values.yaml file and define the templates there.
 
-> See `www/error.html`, `www/force.html`, and `www/unidle.html` for inspiration
+> See `www/error.html`, `www/forced.html`, and `www/unidle.html` for inspiration
 
 ```
 templates:
@@ -62,7 +62,6 @@ templates:
     {{define "base"}}
     <html>
     <head>
-    <meta http-equiv="refresh" content="{{ .RefreshInterval }}">
     </head>
     <body>
     {{ .ErrorCode }} {{ .ErrorMessage }}
