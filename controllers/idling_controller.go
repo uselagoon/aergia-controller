@@ -41,9 +41,6 @@ type IdlingReconciler struct {
 	Unidler *unidler.Unidler
 }
 
-// all the things
-// +kubebuilder:rbac:groups=*,resources=*,verbs=*
-
 func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	opLog := r.Log.WithValues("idler", req.NamespacedName)
 

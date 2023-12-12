@@ -207,9 +207,9 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 }
 
 /*
-	patchIngress will patch any ingress with matching labels with the `custom-http-errors` annotation.
-	this annotation is used by the unidler to make sure that the correct information is passed to the custom backend for
-	the nginx ingress controller so that we can handle unidling of the environment properly
+patchIngress will patch any ingress with matching labels with the `custom-http-errors` annotation.
+this annotation is used by the unidler to make sure that the correct information is passed to the custom backend for
+the nginx ingress controller so that we can handle unidling of the environment properly
 */
 func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) error {
 	if !h.Selectors.Service.SkipIngressPatch {

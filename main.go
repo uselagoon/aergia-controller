@@ -145,13 +145,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// if a blockedagents file is found, provide them to the unidler to block agents from unidling environments
+	// provides nil if no file found
+	allowedAgents, _ := unidler.ReadSliceFromFile("/lists/allowedagents")
+	blockedAgents, _ := unidler.ReadSliceFromFile("/lists/blockedagents")
+	allowedIPs, _ := unidler.ReadSliceFromFile("/lists/allowedips")
+	blockedIPs, _ := unidler.ReadSliceFromFile("/lists/blockedips")
 	unidler := &unidler.Unidler{
-		Client:          mgr.GetClient(),
-		Log:             ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
-		RefreshInterval: refreshInterval,
-		Debug:           debug,
-		RequestCount:    requestCount,
-		RequestDuration: requestDuration,
+		Client:            mgr.GetClient(),
+		Log:               ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
+		RefreshInterval:   refreshInterval,
+		Debug:             debug,
+		RequestCount:      requestCount,
+		RequestDuration:   requestDuration,
+		AllowedUserAgents: allowedAgents,
+		BlockedUserAgents: blockedAgents,
+		AllowedIPs:        allowedIPs,
+		BlockedIPs:        blockedIPs,
 	}
 
 	prometheusClient, err := prometheusapi.NewClient(prometheusapi.Config{
