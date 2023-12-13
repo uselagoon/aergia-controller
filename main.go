@@ -17,7 +17,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/amazeeio/aergia-controller/controllers"
 	"github.com/amazeeio/aergia-controller/handlers/idler"
@@ -63,7 +65,7 @@ func main() {
 
 	var prometheusAddress string
 	var prometheusCheckInterval string
-	var podCheckInterval int
+	var podCheckInterval string
 
 	var enableCLIIdler bool
 	var enableServiceIdler bool
@@ -86,8 +88,8 @@ func main() {
 		"The address for the prometheus endpoint to check against")
 	flag.StringVar(&prometheusCheckInterval, "prometheus-interval", "4h",
 		"The time range interval for how long to check prometheus for (default: 4h)")
-	flag.IntVar(&podCheckInterval, "pod-check-interval", 4,
-		"The time range interval for how long to check pod update (default: 4)")
+	flag.StringVar(&podCheckInterval, "pod-check-interval", "4h",
+		"The time range interval for how long to check pod update (default: 4h)")
 	flag.BoolVar(&skipHitCheck, "skip-hit-check", false,
 		"Flag to determine if the idler should check the hit backend or not. If true, this overrides what is in the selectors file.")
 	flag.BoolVar(&enableCLIIdler, "enable-cli-idler", true, "Flag to enable cli idler.")
@@ -102,11 +104,25 @@ func main() {
 	serviceCron = variables.GetEnv("SERVICE_CRON", serviceCron)
 	enableServiceIdler = variables.GetEnvBool("ENABLE_SERVICE_IDLER", enableServiceIdler)
 	enableCLIIdler = variables.GetEnvBool("ENABLE_CLI_IDLER", enableCLIIdler)
-	podCheckInterval = variables.GetEnvInt("POD_CHECK_INTERVAL", podCheckInterval)
+	podCheckInterval = variables.GetEnv("POD_CHECK_INTERVAL", podCheckInterval)
+	timePodCheckInterval, err := time.ParseDuration(podCheckInterval)
+	if err != nil {
+		// if the first parse fails, it may be because the user is using a single integer hour value from a previous release
+		// this handles the conversion from the previous integer value to the new time.Duration value support.
+		timePodCheckInterval, err = time.ParseDuration(fmt.Sprintf("%sh", podCheckInterval))
+		if err != nil {
+			setupLog.Error(err, "unable to decode pod check interval")
+			os.Exit(1)
+		}
+	}
 
 	prometheusAddress = variables.GetEnv("PROMETHEUS_ADDRESS", prometheusAddress)
 	prometheusCheckInterval = variables.GetEnv("PROMETHEUS_CHECK_INTERVAL", prometheusCheckInterval)
-
+	timePrometheusCheckInterval, err := time.ParseDuration(prometheusCheckInterval)
+	if err != nil {
+		setupLog.Error(err, "unable to decode prometheus check interval")
+		os.Exit(1)
+	}
 	ctrl.SetLogger(zap.New(func(o *zap.Options) {
 		o.Development = true
 	}))
@@ -176,9 +192,9 @@ func main() {
 	idler := &idler.Idler{
 		Client:                  mgr.GetClient(),
 		Log:                     ctrl.Log.WithName("aergia-controller").WithName("ServiceIdler"),
-		PodCheckInterval:        podCheckInterval,
+		PodCheckInterval:        timePodCheckInterval,
 		PrometheusClient:        prometheusClient,
-		PrometheusCheckInterval: prometheusCheckInterval,
+		PrometheusCheckInterval: timePrometheusCheckInterval,
 		DryRun:                  dryRun,
 		Debug:                   debug,
 		Selectors:               selectors,

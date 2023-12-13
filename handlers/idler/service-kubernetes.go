@@ -28,6 +28,22 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			Selector: labels.NewSelector().Add(labelRequirements...),
 		},
 	})
+	podIntervalCheck := h.PodCheckInterval
+	prometheusInternalCheck := h.PrometheusCheckInterval
+	// allow namespace interval overides
+	if podinterval, ok := namespace.ObjectMeta.Annotations["idling.amazee.io/pod-interval"]; ok {
+		t, err := time.ParseDuration(podinterval)
+		if err == nil {
+			podIntervalCheck = t
+		}
+
+	}
+	if promethusinterval, ok := namespace.ObjectMeta.Annotations["idling.amazee.io/prometheus-interval"]; ok {
+		t, err := time.ParseDuration(promethusinterval)
+		if err == nil {
+			prometheusInternalCheck = t
+		}
+	}
 	builds := &corev1.PodList{}
 	runningBuild := false
 	if !h.Selectors.Service.SkipBuildCheck {
@@ -89,11 +105,11 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				for _, pod := range pods.Items {
 					// check if the runtime of the pod is more than our interval
 					if pod.Status.StartTime != nil {
-						hs := time.Now().Sub(pod.Status.StartTime.Time).Hours()
+						hs := time.Now().Sub(pod.Status.StartTime.Time)
 						if h.Debug {
-							opLog.Info(fmt.Sprintf("Pod %s has been running for %d hours", pod.ObjectMeta.Name, int(hs)))
+							opLog.Info(fmt.Sprintf("Pod %s has been running for %v", pod.ObjectMeta.Name, hs))
 						}
-						if int(hs) >= h.PodCheckInterval {
+						if hs > podIntervalCheck {
 							// if it is, set the idle flag
 							idle = true
 						}
@@ -114,7 +130,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				promQuery := fmt.Sprintf(
 					`round(sum(increase(nginx_ingress_controller_requests{exported_namespace="%s",status="200"}[%s])) by (status))`,
 					namespace.ObjectMeta.Name,
-					h.PrometheusCheckInterval,
+					prometheusInternalCheck,
 				)
 				result, warnings, err := v1api.Query(ctx, promQuery, time.Now())
 				if err != nil {
@@ -133,7 +149,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					}
 				}
 				// if the hits are not 0, then the environment doesn't need to be idled
-				opLog.Info(fmt.Sprintf("Environment has had %d hits in the last %s", numHits, h.PrometheusCheckInterval))
+				opLog.Info(fmt.Sprintf("Environment has had %d hits in the last %s", numHits, prometheusInternalCheck))
 				if numHits != 0 {
 					opLog.Info(fmt.Sprintf("Environment does not need idling"))
 					return
