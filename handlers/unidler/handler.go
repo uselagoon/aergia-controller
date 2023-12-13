@@ -80,7 +80,6 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			xForwardedFor := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
 			trueClientIP := r.Header.Get("True-Client-IP")
 			requestUserAgent := r.Header.Get("User-Agent")
-			fmt.Println(xForwardedFor, trueClientIP, requestUserAgent)
 
 			allowUnidle := h.checkAccess(ingress.ObjectMeta.Annotations, requestUserAgent, trueClientIP, xForwardedFor)
 			// then run checks to start to unidle the environment
