@@ -21,6 +21,29 @@ To force scale a namespace, you can label the namespace using `idling.amazee.io/
 ### Unidle
 To unidle a namespace, you can label the namespace using `idling.amazee.io/unidle=true`. This will cause the environment to be scaled back up to its previous state.
 
+### Namespace Idling Overrides
+If you want to change a namespaces interval check times outside of the globally applied intervals, the following annotations can be added to the namespace
+* `idling.amazee.io/prometheus-interval` - set this to the time interval for prometheus checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
+* `idling.amazee.io/pod-interval` - set this to the time interval for pod uptime checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
+
+### IP Allow/Block Lists
+It is possible to add global IP allow and block lists, the helm chart will have support for handling this creation
+* allowing IP addresses via `/lists/allowedips` file which is a single line per entry of ip address to allow
+* blocking IP addresses via `/lists/blockedips` file which is a single line per entry of ip address to block
+
+There are also annotations that can be added to specific `Kind: Ingress` objects that allow for ip allow or blocking.
+* `idling.amazee.io/ip-allow-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
+* `idling.amazee.io/ip-block-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
+
+### UserAgent Allow/Block Lists
+It is possible to add global UserAgent allow and block lists, the helm chart will have support for handling this creation
+* allowing user agents via a `/lists/allowedagents` file which is a single line per entry of useragents or regex patterns to match against. These must be `go` based regular expressions.
+* blocking user agents via a `/lists/blockedagents` file which is a single line per entry of useragents or regex patterns to match against. These must be `go` based regular expressions.
+
+There are also annotations that can be added to specific `Kind: Ingress` objects that allow for user agent allow or blocking.
+* `idling.amazee.io/allowed-agents` - a comma separated list of user agents or regex patterns to allow.
+* `idling.amazee.io/blocked-agents` - a comma separated list of user agents or regex patterns to block.
+
 ## Change the default templates
 
 By using the environment variable `ERROR_FILES_PATH`, and pointing to a location that contains the three templates `error.html`, `forced.html`, and `unidle.html`, you can change what is shown to the end user.
