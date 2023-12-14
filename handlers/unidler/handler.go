@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -66,6 +67,13 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 		// @TODO: check for code 503 specifically, or just any request that has the namespace in it will be "unidled" if a request comes in for
 		// that ingress and the
 		if ns != "" {
+			namespace := &corev1.Namespace{}
+			if err := h.Client.Get(ctx, types.NamespacedName{
+				Name: ns,
+			}, namespace); err != nil {
+				opLog.Info(fmt.Sprintf("unable to get any namespaces: %v", err))
+				return
+			}
 			ingress := &networkv1.Ingress{}
 			if err := h.Client.Get(ctx, types.NamespacedName{
 				Namespace: ns,
@@ -81,7 +89,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			trueClientIP := r.Header.Get("True-Client-IP")
 			requestUserAgent := r.Header.Get("User-Agent")
 
-			allowUnidle := h.checkAccess(ingress.ObjectMeta.Annotations, requestUserAgent, trueClientIP, xForwardedFor)
+			allowUnidle := h.checkAccess(namespace.ObjectMeta.Annotations, ingress.ObjectMeta.Annotations, requestUserAgent, trueClientIP, xForwardedFor)
 			// then run checks to start to unidle the environment
 			if allowUnidle {
 				// if a namespace exists, it means that the custom-http-errors code is defined in the ingress object
@@ -105,6 +113,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				if h.Debug == true {
 					opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 				}
+				w.Header().Set("X-Aergia-Allowed", "true")
 				// then return the unidle template to the user
 				tmpl := template.Must(template.ParseFiles(file))
 				tmpl.ExecuteTemplate(w, "base", pageData{

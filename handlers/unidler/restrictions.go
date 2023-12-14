@@ -34,75 +34,62 @@ func checkIPList(allowList []string, xForwardedFor []string, trueClientIP string
 	return false
 }
 
-func (h *Unidler) checkAccess(annotations map[string]string, userAgent, trueClientIP string, xForwardedFor []string) bool {
-	allowedIP := false
-	allowedAgent := false
-	blockedIP := false
-	blockedAgent := false
-
-	hasIPAllowList := false
-	hasAllowedAgentList := false
-	hasIPBlockList := false
-	hasBlockedAgentList := false
-
-	if alist, ok := annotations["idling.amazee.io/ip-allow-list"]; ok {
-		// there is an allow list, we want to deny any requests now unless they are the trueclientip
-		// or xforwardedfor if trueclientip is not defined
-		hasIPAllowList = true
-		allowedIP = checkIPList(strings.Split(alist, ","), xForwardedFor, trueClientIP)
-	} else {
-		if h.AllowedIPs != nil {
-			hasIPAllowList = true
-			allowedIP = checkIPList(h.AllowedIPs, xForwardedFor, trueClientIP)
-		}
-	}
-
-	if blist, ok := annotations["idling.amazee.io/ip-block-list"]; ok {
-		// there is a block list, we want to allow any requests now unless they are the trueclientip
-		// or xforwardedfor if trueclientip is not defined
-		hasIPBlockList = true
-		blockedIP = checkIPList(strings.Split(blist, ","), xForwardedFor, trueClientIP)
-	} else {
-		if h.BlockedIPs != nil {
-			hasIPBlockList = true
-			blockedIP = checkIPList(h.BlockedIPs, xForwardedFor, trueClientIP)
-		}
-	}
-
+func (h *Unidler) checkAccess(nsannotations map[string]string, annotations map[string]string, userAgent, trueClientIP string, xForwardedFor []string) bool {
 	// deal with ip allow/blocks first
-	if allowedIP && hasIPAllowList {
-		return true
-	}
-	if blockedIP && hasIPBlockList {
+	blockedIP := checkIPAnnotations("idling.amazee.io/ip-block-list", trueClientIP, xForwardedFor, h.BlockedIPs, nsannotations, annotations)
+	if blockedIP {
 		return false
 	}
-
-	if agents, ok := annotations["idling.amazee.io/allowed-agents"]; ok {
-		hasAllowedAgentList = true
-		allowedAgent = checkAgents(strings.Split(agents, ","), userAgent)
-	} else {
-		if h.AllowedUserAgents != nil {
-			hasAllowedAgentList = true
-			allowedAgent = checkAgents(h.AllowedUserAgents, userAgent)
-		}
-	}
-
-	if agents, ok := annotations["idling.amazee.io/blocked-agents"]; ok {
-		hasBlockedAgentList = true
-		blockedAgent = checkAgents(strings.Split(agents, ","), userAgent)
-	} else {
-		if h.BlockedUserAgents != nil {
-			hasBlockedAgentList = true
-			blockedAgent = checkAgents(h.BlockedUserAgents, userAgent)
-		}
-	}
-
-	if allowedAgent && hasAllowedAgentList {
+	allowedIP := checkIPAnnotations("idling.amazee.io/ip-allow-list", trueClientIP, xForwardedFor, h.AllowedIPs, nsannotations, annotations)
+	if allowedIP {
 		return true
 	}
-	if blockedAgent && hasBlockedAgentList {
+	blockedAgent := checkAgentAnnotations("idling.amazee.io/blocked-agents", userAgent, h.BlockedUserAgents, nsannotations, annotations)
+	if blockedAgent {
 		return false
+	}
+	allowedAgent := checkAgentAnnotations("idling.amazee.io/allowed-agents", userAgent, h.AllowedUserAgents, nsannotations, annotations)
+	if allowedAgent {
+		return true
 	}
 	// else fallthrough
 	return true
+}
+
+func checkAgentAnnotations(annotation, ua string, g []string, ns, i map[string]string) bool {
+	allow := false
+	if agents, ok := i[annotation]; ok {
+		allow = checkAgents(strings.Split(agents, ","), ua)
+	} else {
+		// check for namespace annoation
+		if agents, ok := ns[annotation]; ok {
+			allow = checkAgents(strings.Split(agents, ","), ua)
+		} else {
+			// check for globals
+			if g != nil {
+				allow = checkAgents(g, ua)
+			}
+		}
+	}
+	return allow
+}
+
+func checkIPAnnotations(annotation, tcip string, xff, g []string, ns, i map[string]string) bool {
+	allow := false
+	if alist, ok := i[annotation]; ok {
+		// there is an allow list, we want to deny any requests now unless they are the trueclientip
+		// or xforwardedfor if trueclientip is not defined
+		allow = checkIPList(strings.Split(alist, ","), xff, tcip)
+	} else {
+		// check for namespace annoation
+		if alist, ok := ns[annotation]; ok {
+			allow = checkIPList(strings.Split(alist, ","), xff, tcip)
+		} else {
+			// check for globals
+			if g != nil {
+				allow = checkIPList(g, xff, tcip)
+			}
+		}
+	}
+	return allow
 }

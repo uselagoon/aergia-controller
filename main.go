@@ -56,6 +56,7 @@ func main() {
 	var enableLeaderElection bool
 	var debug bool
 	var refreshInterval int
+	var unidlerHTTPPort int
 
 	var dryRun bool
 	var selectorsFile string
@@ -94,12 +95,14 @@ func main() {
 		"Flag to determine if the idler should check the hit backend or not. If true, this overrides what is in the selectors file.")
 	flag.BoolVar(&enableCLIIdler, "enable-cli-idler", true, "Flag to enable cli idler.")
 	flag.BoolVar(&enableServiceIdler, "enable-service-idler", true, "Flag to enable service idler.")
+	flag.IntVar(&unidlerHTTPPort, "unidler-port", 5000, "Port for the unidler service to listen on.")
 	flag.Parse()
 
 	selectorsFile = variables.GetEnv("SELECTORS_YAML_FILE", selectorsFile)
 
 	dryRun = variables.GetEnvBool("DRY_RUN", dryRun)
 
+	unidlerHTTPPort = variables.GetEnvInt("UNIDLER_PORT", unidlerHTTPPort)
 	cliCron = variables.GetEnv("CLI_CRON", cliCron)
 	serviceCron = variables.GetEnv("SERVICE_CRON", serviceCron)
 	enableServiceIdler = variables.GetEnvBool("ENABLE_SERVICE_IDLER", enableServiceIdler)
@@ -178,6 +181,7 @@ func main() {
 		BlockedUserAgents: blockedAgents,
 		AllowedIPs:        allowedIPs,
 		BlockedIPs:        blockedIPs,
+		UnidlerHTTPPort:   unidlerHTTPPort,
 	}
 
 	prometheusClient, err := prometheusapi.NewClient(prometheusapi.Config{

@@ -76,8 +76,6 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			opLog.Error(err, fmt.Sprintf("Error getting deployments"))
 			return
 		}
-		// fmt.Println(labelRequirements)
-		// fmt.Println("deploys", len(deployments.Items))
 		for _, deployment := range deployments.Items {
 			checkPods := false
 			zeroReps := new(int32)
@@ -134,11 +132,11 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				)
 				result, warnings, err := v1api.Query(ctx, promQuery, time.Now())
 				if err != nil {
-					fmt.Printf("Error querying Prometheus: %v\n", err)
+					opLog.Error(err, "Error querying Prometheus")
 					return
 				}
 				if len(warnings) > 0 {
-					fmt.Printf("Warnings: %v\n", warnings)
+					opLog.Info(fmt.Sprintf("Warnings: %v", warnings))
 				}
 				// and then add up the results of all the status requests to determine hit count
 				if result.Type() == prometheusmodel.ValVector {

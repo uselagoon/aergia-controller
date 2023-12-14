@@ -116,6 +116,7 @@ func TestUnidler_checkAccess(t *testing.T) {
 		BlockedIPs        []string
 	}
 	type args struct {
+		nsannotations map[string]string
 		annotations   map[string]string
 		userAgent     string
 		trueClientIP  string
@@ -362,6 +363,25 @@ func TestUnidler_checkAccess(t *testing.T) {
 			},
 			want: true,
 		},
+		{
+			name: "test15 - allowed ip blocked agent namespace annotation",
+			args: args{
+				nsannotations: map[string]string{
+					"idling.amazee.io/blocked-agents": "@(example).test.?$,@(internal).test.?$",
+					"idling.amazee.io/ip-allow-list":  "1.2.3.4",
+				},
+				userAgent:     "This is not a bot, don't complaint to: complain@example.test.",
+				trueClientIP:  "1.2.3.4",
+				xForwardedFor: nil,
+			},
+			fields: fields{
+				AllowedUserAgents: nil,
+				BlockedUserAgents: nil,
+				BlockedIPs:        nil,
+				AllowedIPs:        nil,
+			},
+			want: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -371,7 +391,7 @@ func TestUnidler_checkAccess(t *testing.T) {
 				AllowedIPs:        tt.fields.AllowedIPs,
 				BlockedIPs:        tt.fields.BlockedIPs,
 			}
-			if got := h.checkAccess(tt.args.annotations, tt.args.userAgent, tt.args.trueClientIP, tt.args.xForwardedFor); got != tt.want {
+			if got := h.checkAccess(tt.args.nsannotations, tt.args.annotations, tt.args.userAgent, tt.args.trueClientIP, tt.args.xForwardedFor); got != tt.want {
 				t.Errorf("Unidler.checkAccess() = %v, want %v", got, tt.want)
 			}
 		})

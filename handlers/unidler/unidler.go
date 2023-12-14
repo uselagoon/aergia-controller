@@ -36,6 +36,7 @@ type Unidler struct {
 	Client            ctrlClient.Client
 	Log               logr.Logger
 	RefreshInterval   int
+	UnidlerHTTPPort   int
 	Debug             bool
 	RequestCount      *prometheus.CounterVec
 	RequestDuration   *prometheus.HistogramVec
@@ -106,7 +107,7 @@ func Run(h *Unidler, setupLog logr.Logger) {
 	http.Handle("/", r)
 
 	httpServer := &http.Server{
-		Addr:    ":5000",
+		Addr:    fmt.Sprintf(":%d", h.UnidlerHTTPPort),
 		Handler: r,
 	}
 	err := httpServer.ListenAndServe()

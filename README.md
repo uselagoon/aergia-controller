@@ -31,7 +31,7 @@ It is possible to add global IP allow and block lists, the helm chart will have 
 * allowing IP addresses via `/lists/allowedips` file which is a single line per entry of ip address to allow
 * blocking IP addresses via `/lists/blockedips` file which is a single line per entry of ip address to block
 
-There are also annotations that can be added to specific `Kind: Ingress` objects that allow for ip allow or blocking.
+There are also annotations that can be added to the namespace, or individual `Kind: Ingress` objects that allow for ip allow or blocking.
 * `idling.amazee.io/ip-allow-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
 * `idling.amazee.io/ip-block-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
 
@@ -40,7 +40,7 @@ It is possible to add global UserAgent allow and block lists, the helm chart wil
 * allowing user agents via a `/lists/allowedagents` file which is a single line per entry of useragents or regex patterns to match against. These must be `go` based regular expressions.
 * blocking user agents via a `/lists/blockedagents` file which is a single line per entry of useragents or regex patterns to match against. These must be `go` based regular expressions.
 
-There are also annotations that can be added to specific `Kind: Ingress` objects that allow for user agent allow or blocking.
+There are also annotations that can be added to the namespace, or individual `Kind: Ingress` objects that allow for user agent allow or blocking.
 * `idling.amazee.io/allowed-agents` - a comma separated list of user agents or regex patterns to allow.
 * `idling.amazee.io/blocked-agents` - a comma separated list of user agents or regex patterns to block.
 
