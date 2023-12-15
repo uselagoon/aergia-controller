@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/go-logr/logr"
 	prometheusapi "github.com/prometheus/client_golang/api"
@@ -23,14 +24,14 @@ import (
 // Idler handles idling of cli and services.
 type Idler struct {
 	Client                  client.Client
-	PodCheckInterval        int
+	PodCheckInterval        time.Duration
 	Log                     logr.Logger
 	Scheme                  *runtime.Scheme
 	DryRun                  bool
 	Debug                   bool
 	Selectors               *Data
 	PrometheusClient        prometheusapi.Client
-	PrometheusCheckInterval string
+	PrometheusCheckInterval time.Duration
 }
 
 type idlerSelector struct {

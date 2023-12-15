@@ -28,3 +28,22 @@ const (
 	LessThan     Operator = "lt"
 )
 ```
+
+## Blocked User Agents and IP Allow Lists
+
+This supports globally 
+* blocking user agents via a `blockedagents` file which is a single line per entry of useragents or regex patterns to match against. These must be `go` based regular expressions.
+* blocking IP addresses via `blockips` file which is a single line per entry of ip address to block
+* allowing IP addresses via `allowips` file which is a single line per entry of ip address to allow
+
+There are also annotations that can be added to specific ingress objects that allow for ip allowlist or specific user agent blocking.
+* `idling.amazee.io/ip-allow-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
+* `idling.amazee.io/ip-block-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
+* `idling.amazee.io/blocked-agents` - a comma separated list of user agents or regex patterns to block.
+
+> Note: Providing the annotations overrides the global block list, it does not append.
+
+##### blockedagents file example
+```
+@(example|internal).test.?$
+```

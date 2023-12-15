@@ -28,6 +28,22 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			Selector: labels.NewSelector().Add(labelRequirements...),
 		},
 	})
+	podIntervalCheck := h.PodCheckInterval
+	prometheusInternalCheck := h.PrometheusCheckInterval
+	// allow namespace interval overides
+	if podinterval, ok := namespace.ObjectMeta.Annotations["idling.amazee.io/pod-interval"]; ok {
+		t, err := time.ParseDuration(podinterval)
+		if err == nil {
+			podIntervalCheck = t
+		}
+
+	}
+	if promethusinterval, ok := namespace.ObjectMeta.Annotations["idling.amazee.io/prometheus-interval"]; ok {
+		t, err := time.ParseDuration(promethusinterval)
+		if err == nil {
+			prometheusInternalCheck = t
+		}
+	}
 	builds := &corev1.PodList{}
 	runningBuild := false
 	if !h.Selectors.Service.SkipBuildCheck {
@@ -60,8 +76,6 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			opLog.Error(err, fmt.Sprintf("Error getting deployments"))
 			return
 		}
-		// fmt.Println(labelRequirements)
-		// fmt.Println("deploys", len(deployments.Items))
 		for _, deployment := range deployments.Items {
 			checkPods := false
 			zeroReps := new(int32)
@@ -89,11 +103,11 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				for _, pod := range pods.Items {
 					// check if the runtime of the pod is more than our interval
 					if pod.Status.StartTime != nil {
-						hs := time.Now().Sub(pod.Status.StartTime.Time).Hours()
+						hs := time.Now().Sub(pod.Status.StartTime.Time)
 						if h.Debug {
-							opLog.Info(fmt.Sprintf("Pod %s has been running for %d hours", pod.ObjectMeta.Name, int(hs)))
+							opLog.Info(fmt.Sprintf("Pod %s has been running for %v", pod.ObjectMeta.Name, hs))
 						}
-						if int(hs) >= h.PodCheckInterval {
+						if hs > podIntervalCheck {
 							// if it is, set the idle flag
 							idle = true
 						}
@@ -114,15 +128,15 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				promQuery := fmt.Sprintf(
 					`round(sum(increase(nginx_ingress_controller_requests{exported_namespace="%s",status="200"}[%s])) by (status))`,
 					namespace.ObjectMeta.Name,
-					h.PrometheusCheckInterval,
+					prometheusInternalCheck,
 				)
 				result, warnings, err := v1api.Query(ctx, promQuery, time.Now())
 				if err != nil {
-					fmt.Printf("Error querying Prometheus: %v\n", err)
+					opLog.Error(err, "Error querying Prometheus")
 					return
 				}
 				if len(warnings) > 0 {
-					fmt.Printf("Warnings: %v\n", warnings)
+					opLog.Info(fmt.Sprintf("Warnings: %v", warnings))
 				}
 				// and then add up the results of all the status requests to determine hit count
 				if result.Type() == prometheusmodel.ValVector {
@@ -133,7 +147,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					}
 				}
 				// if the hits are not 0, then the environment doesn't need to be idled
-				opLog.Info(fmt.Sprintf("Environment has had %d hits in the last %s", numHits, h.PrometheusCheckInterval))
+				opLog.Info(fmt.Sprintf("Environment has had %d hits in the last %s", numHits, prometheusInternalCheck))
 				if numHits != 0 {
 					opLog.Info(fmt.Sprintf("Environment does not need idling"))
 					return
@@ -207,9 +221,9 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 }
 
 /*
-	patchIngress will patch any ingress with matching labels with the `custom-http-errors` annotation.
-	this annotation is used by the unidler to make sure that the correct information is passed to the custom backend for
-	the nginx ingress controller so that we can handle unidling of the environment properly
+patchIngress will patch any ingress with matching labels with the `custom-http-errors` annotation.
+this annotation is used by the unidler to make sure that the correct information is passed to the custom backend for
+the nginx ingress controller so that we can handle unidling of the environment properly
 */
 func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) error {
 	if !h.Selectors.Service.SkipIngressPatch {
@@ -226,6 +240,7 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 			opLog.Error(err, fmt.Sprintf("Error getting ingress"))
 			return fmt.Errorf("Error getting ingress")
 		}
+		patched := false
 		for _, ingress := range ingressList.Items {
 			if !h.DryRun {
 				ingressCopy := ingress.DeepCopy()
@@ -246,8 +261,23 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 					return fmt.Errorf(fmt.Sprintf("Error patching ingress %s", ingress.ObjectMeta.Name))
 				}
 				opLog.Info(fmt.Sprintf("Ingress %s patched", ingress.ObjectMeta.Name))
+				patched = true
 			} else {
 				opLog.Info(fmt.Sprintf("Ingress %s would be patched", ingress.ObjectMeta.Name))
+			}
+		}
+		if patched {
+			// update the namespace to indicate it is not idled
+			namespaceCopy := namespace.DeepCopy()
+			mergePatch, _ := json.Marshal(map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"labels": map[string]string{
+						"idling.amazee.io/idled": "false",
+					},
+				},
+			})
+			if err := h.Client.Patch(ctx, namespaceCopy, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+				return fmt.Errorf(fmt.Sprintf("Error patching namespace %s", namespace.Name))
 			}
 		}
 	}

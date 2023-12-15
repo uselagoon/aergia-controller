@@ -13,10 +13,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kindest_node_version: [v1.21.12, v1.22.9, v1.23.6, v1.24.7]
+        kindest_node_version: [v1.23.6, v1.24.7, v1.25.3]
         experimental: [false]
         include:
-          - kindest_node_version: v1.25.0
+          - kindest_node_version: v1.26.3
+            experimental: true
+          - kindest_node_version: v1.27.3
             experimental: true
     steps:
     - name: Checkout
@@ -28,7 +30,7 @@ jobs:
     - name: Setup correct Go version
       uses: actions/setup-go@v2
       with:
-        go-version: '1.18'
+        go-version: '1.21'
     - name: Install kustomize, kubebuilder, helm
       run: |
         #kubebuilder

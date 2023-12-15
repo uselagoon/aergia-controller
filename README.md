@@ -21,6 +21,44 @@ To force scale a namespace, you can label the namespace using `idling.amazee.io/
 ### Unidle
 To unidle a namespace, you can label the namespace using `idling.amazee.io/unidle=true`. This will cause the environment to be scaled back up to its previous state.
 
+### Idled
+A label `idling.amazee.io/idled` is set that will be true or false depending on if the environment is idled. This ideally should not be modified as Aergia will update it as required.
+
+### Namespace Idling Overrides
+If you want to change a namespaces interval check times outside of the globally applied intervals, the following annotations can be added to the namespace
+* `idling.amazee.io/prometheus-interval` - set this to the time interval for prometheus checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
+* `idling.amazee.io/pod-interval` - set this to the time interval for pod uptime checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
+
+### IP Allow/Block Lists
+It is possible to add global IP allow and block lists, the helm chart will have support for handling this creation
+* allowing IP addresses via `/lists/allowedips` file which is a single line per entry of ip address to allow
+* blocking IP addresses via `/lists/blockedips` file which is a single line per entry of ip address to block
+
+There are also annotations that can be added to the namespace, or individual `Kind: Ingress` objects that allow for ip allow or blocking.
+* `idling.amazee.io/ip-allow-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
+* `idling.amazee.io/ip-block-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
+
+### UserAgent Allow/Block Lists
+It is possible to add global UserAgent allow and block lists, the helm chart will have support for handling this creation
+* allowing user agents via a `/lists/allowedagents` file which is a single line per entry of useragents or regex patterns to match against. These must be `go` based regular expressions.
+* blocking user agents via a `/lists/blockedagents` file which is a single line per entry of useragents or regex patterns to match against. These must be `go` based regular expressions.
+
+There are also annotations that can be added to the namespace, or individual `Kind: Ingress` objects that allow for user agent allow or blocking.
+* `idling.amazee.io/allowed-agents` - a comma separated list of user agents or regex patterns to allow.
+* `idling.amazee.io/blocked-agents` - a comma separated list of user agents or regex patterns to block.
+
+### Verify Unidling Requests
+It is possible to start Aergia in a mode where it will require unidling requests to be verified. The way this works is by using HMAC and passing the signed version of the requested namespace back to the user when the initial request to unidle the environment is received. When a client loads this page, it will execute a javascript query back to the requested ingress which is then verified by Aergia. If verification suceeds, it proceeds to unidle the environment. This functionality can be useful to prevent bots and other systems that don't have the ability to execute javascript from unidling environments uncessarily. The signed namespace value will only work for the requested namespace.
+
+To enable this functionality, set the following:
+- `--verified-unidling=true` or envvar `VERIFIED_UNIDLING=true`
+- `--verify-secret=use-your-own-secret` or envvar `VERIFY_SECRET=use-your-own-secret`
+
+If the verification featuer is enabled, and you need to unidle environments using tools that can't execute javascript, then it is possible to allow a namespace to override the feature by adding the following annotation to the namespace. Using the other allow/blocking mechanisms can then be used to restrict how the environment can unidle if required.
+* `idling.amazee.io/disable-request-verification=true` - set this to disable the hmac verification on a namespace if Aergia has unidling request verification turned on.
+
+If you're using custom template overrides and enable this functionality, you will need to extend your `unidle.html` template with the additional changes to allow it to to perform the call back function or else environments will never unidle. See the bundled `unidle.html` file to see how this may differ from your custom templates.
+
 ## Change the default templates
 
 By using the environment variable `ERROR_FILES_PATH`, and pointing to a location that contains the three templates `error.html`, `forced.html`, and `unidle.html`, you can change what is shown to the end user.

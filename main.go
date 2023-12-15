@@ -17,7 +17,9 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/amazeeio/aergia-controller/controllers"
 	"github.com/amazeeio/aergia-controller/handlers/idler"
@@ -54,6 +56,7 @@ func main() {
 	var enableLeaderElection bool
 	var debug bool
 	var refreshInterval int
+	var unidlerHTTPPort int
 
 	var dryRun bool
 	var selectorsFile string
@@ -63,10 +66,12 @@ func main() {
 
 	var prometheusAddress string
 	var prometheusCheckInterval string
-	var podCheckInterval int
+	var podCheckInterval string
 
 	var enableCLIIdler bool
 	var enableServiceIdler bool
+	var verifiedUnidling bool
+	var verifiedSecret string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -86,27 +91,49 @@ func main() {
 		"The address for the prometheus endpoint to check against")
 	flag.StringVar(&prometheusCheckInterval, "prometheus-interval", "4h",
 		"The time range interval for how long to check prometheus for (default: 4h)")
-	flag.IntVar(&podCheckInterval, "pod-check-interval", 4,
-		"The time range interval for how long to check pod update (default: 4)")
+	flag.StringVar(&podCheckInterval, "pod-check-interval", "4h",
+		"The time range interval for how long to check pod update (default: 4h)")
 	flag.BoolVar(&skipHitCheck, "skip-hit-check", false,
 		"Flag to determine if the idler should check the hit backend or not. If true, this overrides what is in the selectors file.")
 	flag.BoolVar(&enableCLIIdler, "enable-cli-idler", true, "Flag to enable cli idler.")
 	flag.BoolVar(&enableServiceIdler, "enable-service-idler", true, "Flag to enable service idler.")
+	flag.BoolVar(&verifiedUnidling, "verified-unidling", false,
+		"Flag to enable unidling requests to verify that they are a browser by having the first request do a callback to Aergia with verification.")
+	flag.StringVar(&verifiedSecret, "verify-secret", "super-secret-string",
+		"The secret to use for verifying unidling requests.")
+	flag.IntVar(&unidlerHTTPPort, "unidler-port", 5000, "Port for the unidler service to listen on.")
 	flag.Parse()
 
 	selectorsFile = variables.GetEnv("SELECTORS_YAML_FILE", selectorsFile)
+	verifiedUnidling = variables.GetEnvBool("VERIFIED_UNIDLING", verifiedUnidling)
+	verifiedSecret = variables.GetEnv("VERIFY_SECRET", verifiedSecret)
 
 	dryRun = variables.GetEnvBool("DRY_RUN", dryRun)
 
+	unidlerHTTPPort = variables.GetEnvInt("UNIDLER_PORT", unidlerHTTPPort)
 	cliCron = variables.GetEnv("CLI_CRON", cliCron)
 	serviceCron = variables.GetEnv("SERVICE_CRON", serviceCron)
 	enableServiceIdler = variables.GetEnvBool("ENABLE_SERVICE_IDLER", enableServiceIdler)
 	enableCLIIdler = variables.GetEnvBool("ENABLE_CLI_IDLER", enableCLIIdler)
-	podCheckInterval = variables.GetEnvInt("POD_CHECK_INTERVAL", podCheckInterval)
+	podCheckInterval = variables.GetEnv("POD_CHECK_INTERVAL", podCheckInterval)
+	timePodCheckInterval, err := time.ParseDuration(podCheckInterval)
+	if err != nil {
+		// if the first parse fails, it may be because the user is using a single integer hour value from a previous release
+		// this handles the conversion from the previous integer value to the new time.Duration value support.
+		timePodCheckInterval, err = time.ParseDuration(fmt.Sprintf("%sh", podCheckInterval))
+		if err != nil {
+			setupLog.Error(err, "unable to decode pod check interval")
+			os.Exit(1)
+		}
+	}
 
 	prometheusAddress = variables.GetEnv("PROMETHEUS_ADDRESS", prometheusAddress)
 	prometheusCheckInterval = variables.GetEnv("PROMETHEUS_CHECK_INTERVAL", prometheusCheckInterval)
-
+	timePrometheusCheckInterval, err := time.ParseDuration(prometheusCheckInterval)
+	if err != nil {
+		setupLog.Error(err, "unable to decode prometheus check interval")
+		os.Exit(1)
+	}
 	ctrl.SetLogger(zap.New(func(o *zap.Options) {
 		o.Development = true
 	}))
@@ -145,13 +172,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	// if a blockedagents file is found, provide them to the unidler to block agents from unidling environments
+	// provides nil if no file found
+	allowedAgents, _ := unidler.ReadSliceFromFile("/lists/allowedagents")
+	blockedAgents, _ := unidler.ReadSliceFromFile("/lists/blockedagents")
+	allowedIPs, _ := unidler.ReadSliceFromFile("/lists/allowedips")
+	blockedIPs, _ := unidler.ReadSliceFromFile("/lists/blockedips")
 	unidler := &unidler.Unidler{
-		Client:          mgr.GetClient(),
-		Log:             ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
-		RefreshInterval: refreshInterval,
-		Debug:           debug,
-		RequestCount:    requestCount,
-		RequestDuration: requestDuration,
+		Client:            mgr.GetClient(),
+		Log:               ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
+		RefreshInterval:   refreshInterval,
+		Debug:             debug,
+		RequestCount:      requestCount,
+		RequestDuration:   requestDuration,
+		AllowedUserAgents: allowedAgents,
+		BlockedUserAgents: blockedAgents,
+		AllowedIPs:        allowedIPs,
+		BlockedIPs:        blockedIPs,
+		UnidlerHTTPPort:   unidlerHTTPPort,
+		VerifiedUnidling:  verifiedUnidling,
+		VerifiedSecret:    verifiedSecret,
 	}
 
 	prometheusClient, err := prometheusapi.NewClient(prometheusapi.Config{
@@ -166,9 +206,9 @@ func main() {
 	idler := &idler.Idler{
 		Client:                  mgr.GetClient(),
 		Log:                     ctrl.Log.WithName("aergia-controller").WithName("ServiceIdler"),
-		PodCheckInterval:        podCheckInterval,
+		PodCheckInterval:        timePodCheckInterval,
 		PrometheusClient:        prometheusClient,
-		PrometheusCheckInterval: prometheusCheckInterval,
+		PrometheusCheckInterval: timePrometheusCheckInterval,
 		DryRun:                  dryRun,
 		Debug:                   debug,
 		Selectors:               selectors,
