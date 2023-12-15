@@ -85,7 +85,7 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	if val, ok := namespace.ObjectMeta.Labels["idling.amazee.io/unidle"]; ok && val == "true" {
 		opLog.Info(fmt.Sprintf("Unidling environment %s", namespace.Name))
-		r.Unidler.UnIdle(ctx, namespace.Name, opLog)
+		r.Unidler.Unidle(ctx, &namespace, opLog)
 		nsMergePatch, _ := json.Marshal(map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"labels": map[string]*string{

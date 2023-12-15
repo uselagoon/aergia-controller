@@ -21,6 +21,9 @@ To force scale a namespace, you can label the namespace using `idling.amazee.io/
 ### Unidle
 To unidle a namespace, you can label the namespace using `idling.amazee.io/unidle=true`. This will cause the environment to be scaled back up to its previous state.
 
+### Idled
+A label `idling.amazee.io/idled` is set that will be true or false depending on if the environment is idled. This ideally should not be modified as Aergia will update it as required.
+
 ### Namespace Idling Overrides
 If you want to change a namespaces interval check times outside of the globally applied intervals, the following annotations can be added to the namespace
 * `idling.amazee.io/prometheus-interval` - set this to the time interval for prometheus checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
@@ -43,6 +46,18 @@ It is possible to add global UserAgent allow and block lists, the helm chart wil
 There are also annotations that can be added to the namespace, or individual `Kind: Ingress` objects that allow for user agent allow or blocking.
 * `idling.amazee.io/allowed-agents` - a comma separated list of user agents or regex patterns to allow.
 * `idling.amazee.io/blocked-agents` - a comma separated list of user agents or regex patterns to block.
+
+### Verify Unidling Requests
+It is possible to start Aergia in a mode where it will require unidling requests to be verified. The way this works is by using HMAC and passing the signed version of the requested namespace back to the user when the initial request to unidle the environment is received. When a client loads this page, it will execute a javascript query back to the requested ingress which is then verified by Aergia. If verification suceeds, it proceeds to unidle the environment. This functionality can be useful to prevent bots and other systems that don't have the ability to execute javascript from unidling environments uncessarily. The signed namespace value will only work for the requested namespace.
+
+To enable this functionality, set the following:
+- `--verified-unidling=true` or envvar `VERIFIED_UNIDLING=true`
+- `--verify-secret=use-your-own-secret` or envvar `VERIFY_SECRET=use-your-own-secret`
+
+If the verification featuer is enabled, and you need to unidle environments using tools that can't execute javascript, then it is possible to allow a namespace to override the feature by adding the following annotation to the namespace. Using the other allow/blocking mechanisms can then be used to restrict how the environment can unidle if required.
+* `idling.amazee.io/disable-request-verification=true` - set this to disable the hmac verification on a namespace if Aergia has unidling request verification turned on.
+
+If you're using custom template overrides and enable this functionality, you will need to extend your `unidle.html` template with the additional changes to allow it to to perform the call back function or else environments will never unidle. See the bundled `unidle.html` file to see how this may differ from your custom templates.
 
 ## Change the default templates
 

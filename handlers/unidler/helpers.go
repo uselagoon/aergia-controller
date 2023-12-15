@@ -2,6 +2,9 @@ package unidler
 
 import (
 	"bufio"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"strings"
 )
@@ -33,4 +36,24 @@ func ReadSliceFromFile(path string) ([]string, error) {
 		lines = append(lines, scanner.Text())
 	}
 	return lines, scanner.Err()
+}
+
+func hmacSign(ns string, secret []byte) []byte {
+	hmac := hmac.New(sha256.New, secret)
+	hmac.Write([]byte(ns))
+	dataHmac := hmac.Sum(nil)
+	return dataHmac
+}
+
+func hmacVerifier(verify, toverify string, secret []byte) bool {
+	hmacHex, err := hex.DecodeString(toverify)
+	if err != nil {
+		// error verifying, return false to reject
+		return false
+	}
+	return hmac.Equal(hmacSign(verify, secret), hmacHex)
+}
+
+func hmacSigner(ns string, secret []byte) string {
+	return hex.EncodeToString(hmacSign(ns, secret))
 }

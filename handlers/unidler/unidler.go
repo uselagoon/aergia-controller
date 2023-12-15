@@ -13,6 +13,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
@@ -38,6 +39,8 @@ type Unidler struct {
 	RefreshInterval   int
 	UnidlerHTTPPort   int
 	Debug             bool
+	VerifiedUnidling  bool
+	VerifiedSecret    string
 	RequestCount      *prometheus.CounterVec
 	RequestDuration   *prometheus.HistogramVec
 	Locks             sync.Map
@@ -60,6 +63,7 @@ type pageData struct {
 	RequestID       string
 	ErrorCode       string
 	ErrorMessage    string
+	Verifier        string
 }
 
 const (
@@ -124,19 +128,19 @@ func faviconHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, fmt.Sprintf("%s\n", favicon))
 }
 
-func (h *Unidler) UnIdle(ctx context.Context, ns string, opLog logr.Logger) {
-	defer h.Locks.Delete(ns)
+func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog logr.Logger) {
+	defer h.Locks.Delete(namespace.Name)
 	// get the deployments in the namespace if they have the `watch=true` label
 	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/watch", selection.Equals, []string{"true"})
 	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
-		ctrlClient.InNamespace(ns),
+		ctrlClient.InNamespace(namespace.Name),
 		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(*labelRequirements1),
 		},
 	})
 	deployments := &appsv1.DeploymentList{}
 	if err := h.Client.List(ctx, deployments, listOption); err != nil {
-		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", ns))
+		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", namespace.Name))
 		return
 	}
 	for _, deploy := range deployments.Items {
@@ -144,7 +148,7 @@ func (h *Unidler) UnIdle(ctx context.Context, ns string, opLog logr.Logger) {
 		av, aok := deploy.ObjectMeta.Annotations["idling.amazee.io/idled"]
 		lv, lok := deploy.ObjectMeta.Labels["idling.amazee.io/idled"]
 		if aok && av == "true" || lok && lv == "true" {
-			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v - %s", deploy.ObjectMeta.Name, *deploy.Spec.Replicas, ns))
+			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v - %s", deploy.ObjectMeta.Name, *deploy.Spec.Replicas, namespace.Name))
 			if *deploy.Spec.Replicas == 0 {
 				// default to scaling to 1 replica
 				newReplicas := 1
@@ -176,9 +180,9 @@ func (h *Unidler) UnIdle(ctx context.Context, ns string, opLog logr.Logger) {
 				scaleDepConf := deploy.DeepCopy()
 				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
-					opLog.Info(fmt.Sprintf("Error scaling deployment %s - %s", deploy.ObjectMeta.Name, ns))
+					opLog.Info(fmt.Sprintf("Error scaling deployment %s - %s", deploy.ObjectMeta.Name, namespace.Name))
 				} else {
-					opLog.Info(fmt.Sprintf("Deployment %s scaled to %d - %s", deploy.ObjectMeta.Name, newReplicas, ns))
+					opLog.Info(fmt.Sprintf("Deployment %s scaled to %d - %s", deploy.ObjectMeta.Name, newReplicas, namespace.Name))
 				}
 			}
 		}
@@ -186,11 +190,23 @@ func (h *Unidler) UnIdle(ctx context.Context, ns string, opLog logr.Logger) {
 	// now wait for the pods of these deployments to be ready
 	// this could still result in 503 for users until the resulting services/endpoints are active and receiving traffic
 	for _, deploy := range deployments.Items {
-		opLog.Info(fmt.Sprintf("Waiting for %s to be running - %s", deploy.ObjectMeta.Name, ns))
+		opLog.Info(fmt.Sprintf("Waiting for %s to be running - %s", deploy.ObjectMeta.Name, namespace.Name))
 		timeout, cancel := context.WithTimeout(ctx, defaultPollTimeout)
 		defer cancel()
-		wait.PollUntilWithContext(timeout, defaultPollDuration, h.hasRunningPod(ctx, ns, deploy.Name))
+		wait.PollUntilWithContext(timeout, defaultPollDuration, h.hasRunningPod(ctx, namespace.Name, deploy.Name))
 	}
 	// remove the 503 code from any ingress objects that have it in this namespace
-	h.removeCodeFromIngress(ctx, ns, opLog)
+	h.removeCodeFromIngress(ctx, namespace.Name, opLog)
+	// label the namespace to indicate it is idled
+	namespaceCopy := namespace.DeepCopy()
+	mergePatch, _ := json.Marshal(map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"labels": map[string]string{
+				"idling.amazee.io/idled": "true",
+			},
+		},
+	})
+	if err := h.Client.Patch(ctx, namespaceCopy, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+		opLog.Info(fmt.Sprintf("Error patching namespace %s", namespace.Name))
+	}
 }

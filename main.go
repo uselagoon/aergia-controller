@@ -70,6 +70,8 @@ func main() {
 
 	var enableCLIIdler bool
 	var enableServiceIdler bool
+	var verifiedUnidling bool
+	var verifiedSecret string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
@@ -95,10 +97,16 @@ func main() {
 		"Flag to determine if the idler should check the hit backend or not. If true, this overrides what is in the selectors file.")
 	flag.BoolVar(&enableCLIIdler, "enable-cli-idler", true, "Flag to enable cli idler.")
 	flag.BoolVar(&enableServiceIdler, "enable-service-idler", true, "Flag to enable service idler.")
+	flag.BoolVar(&verifiedUnidling, "verified-unidling", false,
+		"Flag to enable unidling requests to verify that they are a browser by having the first request do a callback to Aergia with verification.")
+	flag.StringVar(&verifiedSecret, "verify-secret", "super-secret-string",
+		"The secret to use for verifying unidling requests.")
 	flag.IntVar(&unidlerHTTPPort, "unidler-port", 5000, "Port for the unidler service to listen on.")
 	flag.Parse()
 
 	selectorsFile = variables.GetEnv("SELECTORS_YAML_FILE", selectorsFile)
+	verifiedUnidling = variables.GetEnvBool("VERIFIED_UNIDLING", verifiedUnidling)
+	verifiedSecret = variables.GetEnv("VERIFY_SECRET", verifiedSecret)
 
 	dryRun = variables.GetEnvBool("DRY_RUN", dryRun)
 
@@ -182,6 +190,8 @@ func main() {
 		AllowedIPs:        allowedIPs,
 		BlockedIPs:        blockedIPs,
 		UnidlerHTTPPort:   unidlerHTTPPort,
+		VerifiedUnidling:  verifiedUnidling,
+		VerifiedSecret:    verifiedSecret,
 	}
 
 	prometheusClient, err := prometheusapi.NewClient(prometheusapi.Config{

@@ -35,11 +35,9 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			w.Header().Set(ServicePort, r.Header.Get(ServicePort))
 			w.Header().Set(RequestID, r.Header.Get(RequestID))
 		}
-
 		format := r.Header.Get(FormatHeader)
 		if format == "" {
 			format = "text/html"
-			// log.Printf("format not specified. Using %v", format)
 		}
 
 		cext, err := mime.ExtensionsByType(format)
@@ -59,13 +57,11 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 		code, err := strconv.Atoi(errCode)
 		if err != nil {
 			code = 404
-			// log.Printf("unexpected error reading return code: %v. Using %v", err, code)
 		}
 		w.WriteHeader(code)
 		ns := r.Header.Get(Namespace)
 		ingressName := r.Header.Get(IngressName)
-		// @TODO: check for code 503 specifically, or just any request that has the namespace in it will be "unidled" if a request comes in for
-		// that ingress and the
+		// check if the namespace exists so we know this is somewhat legitimate request
 		if ns != "" {
 			namespace := &corev1.Namespace{}
 			if err := h.Client.Get(ctx, types.NamespacedName{
@@ -74,13 +70,15 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				opLog.Info(fmt.Sprintf("unable to get any namespaces: %v", err))
 				return
 			}
+			// if hmac verification is enabled, perform the verification of the request
+			signedNamespace, verfied := h.verifyRequest(r, namespace)
 			ingress := &networkv1.Ingress{}
 			if err := h.Client.Get(ctx, types.NamespacedName{
 				Namespace: ns,
 				Name:      ingressName,
 			}, ingress); err != nil {
 				opLog.Info(fmt.Sprintf("Unable to get the ingress %s in %s", ingressName, ns))
-				h.genericError(w, r, opLog, ext, format, path, 400)
+				h.genericError(w, r, opLog, ext, format, path, "", 400)
 				h.setMetrics(r, start)
 				return
 			}
@@ -104,16 +102,20 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				} else {
 					// only unidle environments that aren't force scaled
 					// actually do the unidling here, lock to prevent multiple unidle operations from running
-					_, ok := h.Locks.Load(ns)
-					if !ok {
-						_, _ = h.Locks.LoadOrStore(ns, ns)
-						go h.UnIdle(ctx, ns, opLog)
+					if verfied {
+						w.Header().Set("X-Aergia-Allowed", "true")
+						_, ok := h.Locks.Load(ns)
+						if !ok {
+							_, _ = h.Locks.LoadOrStore(ns, ns)
+							go h.Unidle(ctx, namespace, opLog)
+						}
+					} else {
+						w.Header().Set("X-Aergia-Denied", "true")
 					}
 				}
 				if h.Debug == true {
 					opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 				}
-				w.Header().Set("X-Aergia-Allowed", "true")
 				// then return the unidle template to the user
 				tmpl := template.Must(template.ParseFiles(file))
 				tmpl.ExecuteTemplate(w, "base", pageData{
@@ -128,21 +130,22 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 					ServicePort:     r.Header.Get(ServicePort),
 					RequestID:       r.Header.Get(RequestID),
 					RefreshInterval: h.RefreshInterval,
+					Verifier:        signedNamespace,
 				})
 			} else {
 				// respond with 503 to match the standard request
-				w.Header().Set("X-Aergia-Blocked", "true")
-				h.genericError(w, r, opLog, ext, format, path, 503)
+				w.Header().Set("X-Aergia-Denied", "true")
+				h.genericError(w, r, opLog, ext, format, path, "", 503)
 			}
 		} else {
 			w.Header().Set("X-Aergia-No-Namespace", "true")
-			h.genericError(w, r, opLog, ext, format, path, code)
+			h.genericError(w, r, opLog, ext, format, path, "", code)
 		}
 		h.setMetrics(r, start)
 	}
 }
 
-func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog logr.Logger, ext, format, path string, code int) {
+func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog logr.Logger, ext, format, path, verifier string, code int) {
 	// otherwise just handle the generic http responses here
 	if !strings.HasPrefix(ext, ".") {
 		ext = "." + ext
@@ -165,5 +168,23 @@ func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog log
 		ServicePort:     r.Header.Get(ServicePort),
 		RequestID:       r.Header.Get(RequestID),
 		RefreshInterval: h.RefreshInterval,
+		Verifier:        verifier,
 	})
+}
+
+// handle verifying the namespace name is signed by our secret
+func (h *Unidler) verifyRequest(r *http.Request, ns *corev1.Namespace) (string, bool) {
+	if h.VerifiedUnidling {
+		if val, ok := ns.ObjectMeta.Annotations["idling.amazee.io/disable-request-verification"]; ok {
+			t, _ := strconv.ParseBool(val)
+			if t == true {
+				return "", true
+			}
+		}
+		// if hmac verification is enabled, perform the verification of the request
+		signedNamespace := hmacSigner(ns.Name, []byte(h.VerifiedSecret))
+		verifier := r.URL.Query().Get("verifier")
+		return signedNamespace, hmacVerifier(ns.Name, verifier, []byte(h.VerifiedSecret))
+	}
+	return "", true
 }

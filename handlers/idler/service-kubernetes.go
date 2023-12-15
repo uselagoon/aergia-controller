@@ -240,6 +240,7 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 			opLog.Error(err, fmt.Sprintf("Error getting ingress"))
 			return fmt.Errorf("Error getting ingress")
 		}
+		patched := false
 		for _, ingress := range ingressList.Items {
 			if !h.DryRun {
 				ingressCopy := ingress.DeepCopy()
@@ -260,8 +261,23 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 					return fmt.Errorf(fmt.Sprintf("Error patching ingress %s", ingress.ObjectMeta.Name))
 				}
 				opLog.Info(fmt.Sprintf("Ingress %s patched", ingress.ObjectMeta.Name))
+				patched = true
 			} else {
 				opLog.Info(fmt.Sprintf("Ingress %s would be patched", ingress.ObjectMeta.Name))
+			}
+		}
+		if patched {
+			// update the namespace to indicate it is not idled
+			namespaceCopy := namespace.DeepCopy()
+			mergePatch, _ := json.Marshal(map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"labels": map[string]string{
+						"idling.amazee.io/idled": "false",
+					},
+				},
+			})
+			if err := h.Client.Patch(ctx, namespaceCopy, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+				return fmt.Errorf(fmt.Sprintf("Error patching namespace %s", namespace.Name))
 			}
 		}
 	}
