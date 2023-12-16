@@ -16,6 +16,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/amazeeio/aergia-controller/controllers"
 	"github.com/amazeeio/aergia-controller/handlers/idler"
+	"github.com/amazeeio/aergia-controller/handlers/metrics"
 	"github.com/amazeeio/aergia-controller/handlers/unidler"
 	u "github.com/amazeeio/aergia-controller/handlers/unidler"
 	prometheusapi "github.com/prometheus/client_golang/api"
@@ -249,6 +251,10 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Idling")
 		os.Exit(1)
 	}
+
+	setupLog.Info("starting aergia metrics server")
+	m := metrics.NewServer(setupLog, ":9912")
+	defer m.Shutdown(context.Background())
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

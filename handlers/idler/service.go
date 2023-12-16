@@ -6,6 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -32,6 +33,15 @@ func (h *Idler) ServiceIdler() {
 	// in kubernetes, we can reliably check for the existence of this label so that
 	// we only check namespaces that have been deployed by a lagoon at one point
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Namespace)
+	// only evaluate namespaces that are not idled
+	selector := generateSelector(idlerSelector{
+		Name:     "idling.amazee.io/idled",
+		Operator: selection.NotEquals,
+		Values: []string{
+			"true",
+		},
+	})
+	labelRequirements = append(labelRequirements, *selector)
 	listOption = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(labelRequirements...),

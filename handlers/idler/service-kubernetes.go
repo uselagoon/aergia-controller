@@ -267,15 +267,16 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 			}
 		}
 		if patched {
-			// update the namespace to indicate it is not idled
+			// update the namespace to indicate it is idled
 			namespaceCopy := namespace.DeepCopy()
 			mergePatch, _ := json.Marshal(map[string]interface{}{
 				"metadata": map[string]interface{}{
 					"labels": map[string]string{
-						"idling.amazee.io/idled": "false",
+						"idling.amazee.io/idled": "true",
 					},
 				},
 			})
+			idleEvents.Inc()
 			if err := h.Client.Patch(ctx, namespaceCopy, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 				return fmt.Errorf(fmt.Sprintf("Error patching namespace %s", namespace.Name))
 			}

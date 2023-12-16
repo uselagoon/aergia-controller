@@ -191,9 +191,7 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	// this could still result in 503 for users until the resulting services/endpoints are active and receiving traffic
 	for _, deploy := range deployments.Items {
 		opLog.Info(fmt.Sprintf("Waiting for %s to be running - %s", deploy.ObjectMeta.Name, namespace.Name))
-		timeout, cancel := context.WithTimeout(ctx, defaultPollTimeout)
-		defer cancel()
-		wait.PollUntilWithContext(timeout, defaultPollDuration, h.hasRunningPod(ctx, namespace.Name, deploy.Name))
+		wait.PollUntilContextTimeout(ctx, defaultPollDuration, defaultPollTimeout, true, h.hasRunningPod(ctx, namespace.Name, deploy.Name))
 	}
 	// remove the 503 code from any ingress objects that have it in this namespace
 	h.removeCodeFromIngress(ctx, namespace.Name, opLog)
@@ -202,10 +200,11 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	mergePatch, _ := json.Marshal(map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"labels": map[string]string{
-				"idling.amazee.io/idled": "true",
+				"idling.amazee.io/idled": "false",
 			},
 		},
 	})
+	unidleEvents.Inc()
 	if err := h.Client.Patch(ctx, namespaceCopy, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 		opLog.Info(fmt.Sprintf("Error patching namespace %s", namespace.Name))
 	}

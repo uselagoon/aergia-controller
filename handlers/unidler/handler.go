@@ -92,7 +92,9 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			if allowUnidle {
 				// if a namespace exists, it means that the custom-http-errors code is defined in the ingress object
 				// so do something with that here, like kickstart the idler process to unidle targets
-				opLog.Info(fmt.Sprintf("Got request in namespace %s", ns))
+				if h.Debug {
+					opLog.Info(fmt.Sprintf("Request for %s verfied: %t from xff:%s; tcip:%s; ua: %s, ", ns, verfied, xForwardedFor, trueClientIP, requestUserAgent))
+				}
 
 				file := fmt.Sprintf("%v/unidle.html", path)
 				forceScaled := h.checkForceScaled(ctx, ns, opLog)
@@ -103,6 +105,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 					// only unidle environments that aren't force scaled
 					// actually do the unidling here, lock to prevent multiple unidle operations from running
 					if verfied {
+						allowedRequests.Inc()
 						w.Header().Set("X-Aergia-Allowed", "true")
 						_, ok := h.Locks.Load(ns)
 						if !ok {
@@ -110,7 +113,8 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 							go h.Unidle(ctx, namespace, opLog)
 						}
 					} else {
-						w.Header().Set("X-Aergia-Denied", "true")
+						verificationRequired.Inc()
+						w.Header().Set("X-Aergia-Verification-Required", "true")
 					}
 				}
 				if h.Debug == true {
@@ -133,12 +137,15 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 					Verifier:        signedNamespace,
 				})
 			} else {
-				// respond with 503 to match the standard request
+				// respond with forbidden
 				w.Header().Set("X-Aergia-Denied", "true")
-				h.genericError(w, r, opLog, ext, format, path, "", 503)
+				blockedRequests.Inc()
+				h.genericError(w, r, opLog, ext, format, path, "", 403)
 			}
 		} else {
+			w.Header().Set("X-Aergia-Denied", "true")
 			w.Header().Set("X-Aergia-No-Namespace", "true")
+			noNamespaceRequests.Inc()
 			h.genericError(w, r, opLog, ext, format, path, "", code)
 		}
 		h.setMetrics(r, start)
@@ -184,6 +191,7 @@ func (h *Unidler) verifyRequest(r *http.Request, ns *corev1.Namespace) (string, 
 		// if hmac verification is enabled, perform the verification of the request
 		signedNamespace := hmacSigner(ns.Name, []byte(h.VerifiedSecret))
 		verifier := r.URL.Query().Get("verifier")
+		verificationRequests.Inc()
 		return signedNamespace, hmacVerifier(ns.Name, verifier, []byte(h.VerifiedSecret))
 	}
 	return "", true
