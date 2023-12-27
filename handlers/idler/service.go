@@ -61,7 +61,7 @@ func (h *Idler) ServiceIdler() {
 		environmentAutoIdle, ok2 := namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentIdling]
 		environmentType, ok3 := namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentType]
 		if ok1 && ok2 && ok3 {
-			if environmentType == "development" && environmentAutoIdle == "1" && projectAutoIdle == "1" {
+			if environmentAutoIdle == "1" && projectAutoIdle == "1" {
 				envOpLog := opLog.WithValues("namespace", namespace.ObjectMeta.Name).
 					WithValues("project", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName]).
 					WithValues("environment", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
