@@ -276,7 +276,7 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 					},
 				},
 			})
-			idleEvents.Inc()
+			serviceIdleEvents.Inc()
 			if err := h.Client.Patch(ctx, namespaceCopy, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 				return fmt.Errorf(fmt.Sprintf("Error patching namespace %s", namespace.Name))
 			}
