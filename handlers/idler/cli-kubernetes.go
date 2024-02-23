@@ -136,6 +136,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 									} else {
 										opLog.Info(fmt.Sprintf("Deployment %s scaled to 0", deployment.ObjectMeta.Name))
 									}
+									cliIdleEvents.Inc()
 								} else {
 									opLog.Info(fmt.Sprintf("Deployment %s would be scaled to 0", deployment.ObjectMeta.Name))
 								}

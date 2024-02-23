@@ -6,8 +6,12 @@ import (
 )
 
 var (
-	idleEvents = promauto.NewCounter(prometheus.CounterOpts{
+	serviceIdleEvents = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "aergia_idling_events",
-		Help: "The total number of events that aergia has processed to idle environments",
+		Help: "The total number of service idling events that aergia has processed to idle environments",
+	})
+	cliIdleEvents = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "aergia_cli_idling_events",
+		Help: "The total number of cli idling events that aergia has processed to idle environments",
 	})
 )
