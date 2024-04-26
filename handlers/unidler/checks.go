@@ -80,13 +80,12 @@ func (h *Unidler) removeCodeFromIngress(ctx context.Context, ns string, opLog lo
 			if newVals == nil || *newVals != value {
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
-						"labels": map[string]*string{
-							"idling.amazee.io/idled": nil,
+						"labels": map[string]interface{}{
+							"idling.amazee.io/idled": "false",
 						},
-						"annotations": map[string]*string{
+						"annotations": map[string]interface{}{
 							"nginx.ingress.kubernetes.io/custom-http-errors": newVals,
 							"idling.amazee.io/idled-at":                      nil,
-							"idling.amazee.io/idled":                         nil,
 						},
 					},
 				})
