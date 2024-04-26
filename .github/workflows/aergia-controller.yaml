@@ -59,8 +59,8 @@ jobs:
       with:
         context: .
         load: true
-        tags: amazeeiolocal/aergia:test-tag
+        tags: testlagoon/aergia:test-tag
     - name: Run Tests
       run: |
-        kind load docker-image amazeeiolocal/aergia:test-tag --name chart-testing
+        kind load docker-image testlagoon/aergia:test-tag --name chart-testing
         make controller-test

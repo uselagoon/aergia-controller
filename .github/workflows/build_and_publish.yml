@@ -24,8 +24,8 @@ jobs:
         with:
           # list of Docker images to use as base name for tags
           images: |
-            amazeeio/aergia
-            ghcr.io/amazeeio/aergia
+            uselagoon/aergia
+            ghcr.io/uselagoon/aergia
       -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v3
