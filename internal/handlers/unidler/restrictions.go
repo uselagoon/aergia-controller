@@ -36,19 +36,19 @@ func checkIPList(allowList []string, xForwardedFor []string, trueClientIP string
 
 func (h *Unidler) checkAccess(nsannotations map[string]string, annotations map[string]string, userAgent, trueClientIP string, xForwardedFor []string) bool {
 	// deal with ip allow/blocks first
-	blockedIP := checkIPAnnotations("idling.amazee.io/ip-block-list", trueClientIP, xForwardedFor, h.BlockedIPs, nsannotations, annotations)
+	blockedIP := checkIPAnnotations("idling.lagoon.sh/ip-block-list", trueClientIP, xForwardedFor, h.BlockedIPs, nsannotations, annotations)
 	if blockedIP {
 		return false
 	}
-	allowedIP := checkIPAnnotations("idling.amazee.io/ip-allow-list", trueClientIP, xForwardedFor, h.AllowedIPs, nsannotations, annotations)
+	allowedIP := checkIPAnnotations("idling.lagoon.sh/ip-allow-list", trueClientIP, xForwardedFor, h.AllowedIPs, nsannotations, annotations)
 	if allowedIP {
 		return true
 	}
-	blockedAgent := checkAgentAnnotations("idling.amazee.io/blocked-agents", userAgent, h.BlockedUserAgents, nsannotations, annotations)
+	blockedAgent := checkAgentAnnotations("idling.lagoon.sh/blocked-agents", userAgent, h.BlockedUserAgents, nsannotations, annotations)
 	if blockedAgent {
 		return false
 	}
-	allowedAgent := checkAgentAnnotations("idling.amazee.io/allowed-agents", userAgent, h.AllowedUserAgents, nsannotations, annotations)
+	allowedAgent := checkAgentAnnotations("idling.lagoon.sh/allowed-agents", userAgent, h.AllowedUserAgents, nsannotations, annotations)
 	if allowedAgent {
 		return true
 	}

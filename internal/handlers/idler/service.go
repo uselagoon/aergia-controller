@@ -29,7 +29,7 @@ func (h *Idler) ServiceIdler() {
 	// @TODO: reintroduce this later on, since there are some cases where an environment is unidled where this
 	// does not get changed currently
 	// selector := generateSelector(idlerSelector{
-	// 	Name:     "idling.amazee.io/idled",
+	// 	Name:     "idling.lagoon.sh/idled",
 	// 	Operator: selection.NotEquals,
 	// 	Values: []string{
 	// 		"true",
