@@ -145,9 +145,8 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	}
 	for _, deploy := range deployments.Items {
 		// if the idled annotation is true
-		av, aok := deploy.ObjectMeta.Annotations["idling.amazee.io/idled"]
 		lv, lok := deploy.ObjectMeta.Labels["idling.amazee.io/idled"]
-		if aok && av == "true" || lok && lv == "true" {
+		if lok && lv == "true" {
 			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v - %s", deploy.ObjectMeta.Name, *deploy.Spec.Replicas, namespace.Name))
 			if *deploy.Spec.Replicas == 0 {
 				// default to scaling to 1 replica
@@ -166,14 +165,13 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 						"replicas": newReplicas,
 					},
 					"metadata": map[string]interface{}{
-						"labels": map[string]*string{
-							"idling.amazee.io/idled":        nil,
+						"labels": map[string]interface{}{
+							"idling.amazee.io/idled":        "false",
 							"idling.amazee.io/force-idled":  nil,
 							"idling.amazee.io/force-scaled": nil,
 						},
-						"annotations": map[string]*string{
+						"annotations": map[string]interface{}{
 							"idling.amazee.io/idled-at": nil,
-							"idling.amazee.io/idled":    nil,
 						},
 					},
 				})
