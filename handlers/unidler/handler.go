@@ -22,7 +22,6 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 		ctx := context.Background()
 		opLog := h.Log.WithValues("custom-default-backend", "request")
 		start := time.Now()
-		ext := "html"
 		// if debug is enabled, then set the headers in the response too
 		if os.Getenv("DEBUG") == "true" {
 			w.Header().Set(FormatHeader, r.Header.Get(FormatHeader))
@@ -40,14 +39,10 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			format = "text/html"
 		}
 
-		cext, err := mime.ExtensionsByType(format)
+		_, err := mime.ExtensionsByType(format)
 		if err != nil {
 			// log.Printf("unexpected error reading media type extension: %v. Using %v", err, ext)
 			format = "text/html"
-		} else if len(cext) == 0 {
-			// log.Printf("couldn't get media type extension. Using %v", ext)
-		} else {
-			ext = cext[0]
 		}
 		w.Header().Set(ContentType, format)
 		w.Header().Set(AergiaHeader, "true")
@@ -78,7 +73,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				Name:      ingressName,
 			}, ingress); err != nil {
 				opLog.Info(fmt.Sprintf("Unable to get the ingress %s in %s", ingressName, ns))
-				h.genericError(w, r, opLog, ext, format, path, "", 400)
+				h.genericError(w, r, opLog, format, path, "", 400)
 				h.setMetrics(r, start)
 				return
 			}
@@ -117,7 +112,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 						w.Header().Set("X-Aergia-Verification-Required", "true")
 					}
 				}
-				if h.Debug == true {
+				if h.Debug {
 					opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 				}
 				// then return the unidle template to the user
@@ -140,25 +135,21 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				// respond with forbidden
 				w.Header().Set("X-Aergia-Denied", "true")
 				blockedRequests.Inc()
-				h.genericError(w, r, opLog, ext, format, path, "", 403)
+				h.genericError(w, r, opLog, format, path, "", 403)
 			}
 		} else {
 			w.Header().Set("X-Aergia-Denied", "true")
 			w.Header().Set("X-Aergia-No-Namespace", "true")
 			noNamespaceRequests.Inc()
-			h.genericError(w, r, opLog, ext, format, path, "", code)
+			h.genericError(w, r, opLog, format, path, "", code)
 		}
 		h.setMetrics(r, start)
 	}
 }
 
-func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog logr.Logger, ext, format, path, verifier string, code int) {
-	// otherwise just handle the generic http responses here
-	if !strings.HasPrefix(ext, ".") {
-		ext = "." + ext
-	}
+func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog logr.Logger, format, path, verifier string, code int) {
 	file := fmt.Sprintf("%v/error.html", path)
-	if h.Debug == true {
+	if h.Debug {
 		opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 	}
 	tmpl := template.Must(template.ParseFiles(file))
@@ -182,9 +173,9 @@ func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog log
 // handle verifying the namespace name is signed by our secret
 func (h *Unidler) verifyRequest(r *http.Request, ns *corev1.Namespace) (string, bool) {
 	if h.VerifiedUnidling {
-		if val, ok := ns.ObjectMeta.Annotations["idling.amazee.io/disable-request-verification"]; ok {
+		if val, ok := ns.ObjectMeta.Annotations["idling.lagoon.sh/disable-request-verification"]; ok {
 			t, _ := strconv.ParseBool(val)
-			if t == true {
+			if t {
 				return "", true
 			}
 		}

@@ -28,7 +28,7 @@ func (h *Idler) CLIIdler() {
 	})
 	namespaces := &corev1.NamespaceList{}
 	if err := h.Client.List(ctx, namespaces, listOption); err != nil {
-		opLog.Error(err, fmt.Sprintf("unable to get any namespaces"))
+		opLog.Error(err, "unable to get any namespaces")
 		return
 	}
 	for _, namespace := range namespaces.Items {
@@ -40,7 +40,7 @@ func (h *Idler) CLIIdler() {
 					WithValues("project", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName]).
 					WithValues("environment", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
 					WithValues("dry-run", h.DryRun)
-				envOpLog.Info(fmt.Sprintf("Checking namespace"))
+				envOpLog.Info("Checking namespace")
 				h.kubernetesCLI(ctx, envOpLog, namespace)
 			} else {
 				if h.Debug {
