@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=list;get;watch;patch;update
@@ -34,7 +33,7 @@ const (
 
 // Unidler is the client structure for http handlers.
 type Unidler struct {
-	Client            ctrlClient.Client
+	Client            client.Client
 	Log               logr.Logger
 	RefreshInterval   int
 	UnidlerHTTPPort   int
@@ -125,15 +124,82 @@ func faviconHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(AergiaHeader, "true")
 	w.Header().Set("Content-Type", "image/x-icon")
 	w.Header().Set("Cache-Control", "public, max-age=7776000")
-	fmt.Fprintln(w, fmt.Sprintf("%s\n", favicon))
+	fmt.Fprintf(w, "%s\n", favicon)
+}
+
+func (h *Unidler) convertOldLabels(ctx context.Context, namespace *corev1.Namespace, opLog logr.Logger) {
+	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/watch", selection.Exists, []string{})
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+		client.InNamespace(namespace.Name),
+		client.MatchingLabelsSelector{
+			Selector: labels.NewSelector().Add(*labelRequirements1),
+		},
+	})
+	deployments := &appsv1.DeploymentList{}
+	if err := h.Client.List(ctx, deployments, listOption); err != nil {
+		opLog.Error(err, fmt.Sprintf("Error getting deployments for namespace %s", namespace.ObjectMeta.Name))
+	} else {
+		for _, deployment := range deployments.Items {
+			deploymentPatchAnnotations := map[string]interface{}{}
+			deploymentPatchLabels := map[string]interface{}{}
+			if val, ok := deployment.ObjectMeta.Labels["idling.amazee.io/watch"]; ok {
+				deploymentPatchLabels["idling.lagoon.sh/watch"] = val
+				deploymentPatchLabels["idling.amazee.io/watch"] = nil
+			}
+			if val, ok := deployment.ObjectMeta.Labels["idling.amazee.io/idled"]; ok {
+				deploymentPatchLabels["idling.lagoon.sh/idled"] = val
+				deploymentPatchLabels["idling.amazee.io/idled"] = nil
+			}
+			if val, ok := deployment.ObjectMeta.Annotations["idling.amazee.io/idled"]; ok {
+				deploymentPatchAnnotations["idling.lagoon.sh/idled"] = val
+				deploymentPatchAnnotations["idling.amazee.io/idled"] = nil
+			}
+			if val, ok := deployment.ObjectMeta.Labels["idling.amazee.io/force-scaled"]; ok {
+				deploymentPatchLabels["idling.lagoon.sh/force-scaled"] = val
+				deploymentPatchLabels["idling.amazee.io/force-scaled"] = nil
+			}
+			if val, ok := deployment.ObjectMeta.Labels["idling.amazee.io/force-idled"]; ok {
+				deploymentPatchLabels["idling.lagoon.sh/force-idled"] = val
+				deploymentPatchLabels["idling.amazee.io/force-idled"] = nil
+			}
+			if val, ok := deployment.ObjectMeta.Annotations["idling.amazee.io/idled-at"]; ok {
+				deploymentPatchAnnotations["idling.lagoon.sh/idled-at"] = val
+				deploymentPatchAnnotations["idling.amazee.io/idled-at"] = nil
+			}
+			if val, ok := deployment.ObjectMeta.Annotations["idling.amazee.io/unidle-replicas"]; ok {
+				deploymentPatchAnnotations["idling.lagoon.sh/unidle-replicas"] = val
+				deploymentPatchAnnotations["idling.amazee.io/unidle-replicas"] = nil
+			}
+			if len(deploymentPatchAnnotations) > 0 || len(deploymentPatchLabels) > 0 {
+				patchDeployment := deployment.DeepCopy()
+				deploymentMergePatch, _ := json.Marshal(map[string]interface{}{
+					"metadata": map[string]interface{}{
+						"labels":      deploymentPatchLabels,
+						"annotations": deploymentPatchAnnotations,
+					},
+				})
+				opLog.Info(fmt.Sprintf("Patching deployment %s with converted annotations and labels", patchDeployment.Name))
+				if err := h.Client.Patch(ctx, patchDeployment, client.RawPatch(types.MergePatchType, deploymentMergePatch)); err != nil {
+					// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
+					opLog.Info(fmt.Sprintf("Error patching deployment %s -%v", patchDeployment.Name, err))
+				}
+				time.Sleep(500 * time.Microsecond)
+			}
+		}
+	}
 }
 
 func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog logr.Logger) {
 	defer h.Locks.Delete(namespace.Name)
+
+	// convert any old labels/annotations on deployments first
+	h.convertOldLabels(ctx, namespace, opLog)
+
 	// get the deployments in the namespace if they have the `watch=true` label
-	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/watch", selection.Equals, []string{"true"})
-	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
-		ctrlClient.InNamespace(namespace.Name),
+
+	labelRequirements1, _ := labels.NewRequirement("idling.lagoon.sh/watch", selection.Equals, []string{"true"})
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+		client.InNamespace(namespace.Name),
 		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(*labelRequirements1),
 		},
@@ -145,13 +211,14 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	}
 	for _, deploy := range deployments.Items {
 		// if the idled annotation is true
-		lv, lok := deploy.ObjectMeta.Labels["idling.amazee.io/idled"]
+		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", namespace.Name))
+		lv, lok := deploy.ObjectMeta.Labels["idling.lagoon.sh/idled"]
 		if lok && lv == "true" {
 			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v - %s", deploy.ObjectMeta.Name, *deploy.Spec.Replicas, namespace.Name))
 			if *deploy.Spec.Replicas == 0 {
 				// default to scaling to 1 replica
 				newReplicas := 1
-				if value, ok := deploy.ObjectMeta.Annotations["idling.amazee.io/unidle-replicas"]; ok {
+				if value, ok := deploy.ObjectMeta.Annotations["idling.lagoon.sh/unidle-replicas"]; ok {
 					// but if the value of the annotation is greater than 0, use what is in the annotation instead
 					unidleReplicas, err := strconv.Atoi(value)
 					if err == nil {
@@ -160,23 +227,25 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 						}
 					}
 				}
+				labels := map[string]interface{}{
+					"idling.lagoon.sh/idled":        "false",
+					"idling.lagoon.sh/force-idled":  nil,
+					"idling.lagoon.sh/force-scaled": nil,
+				}
+				annotations := map[string]interface{}{
+					"idling.lagoon.sh/idled-at": nil,
+				}
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"spec": map[string]interface{}{
 						"replicas": newReplicas,
 					},
 					"metadata": map[string]interface{}{
-						"labels": map[string]interface{}{
-							"idling.amazee.io/idled":        "false",
-							"idling.amazee.io/force-idled":  nil,
-							"idling.amazee.io/force-scaled": nil,
-						},
-						"annotations": map[string]interface{}{
-							"idling.amazee.io/idled-at": nil,
-						},
+						"labels":      labels,
+						"annotations": annotations,
 					},
 				})
 				scaleDepConf := deploy.DeepCopy()
-				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+				if err := h.Client.Patch(ctx, scaleDepConf, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
 					opLog.Info(fmt.Sprintf("Error scaling deployment %s - %s", deploy.ObjectMeta.Name, namespace.Name))
 				} else {
@@ -197,8 +266,9 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	namespaceCopy := namespace.DeepCopy()
 	mergePatch, _ := json.Marshal(map[string]interface{}{
 		"metadata": map[string]interface{}{
-			"labels": map[string]string{
-				"idling.amazee.io/idled": "false",
+			"labels": map[string]interface{}{
+				"idling.lagoon.sh/idled": "false",
+				"idling.amazee.io/idled": nil,
 			},
 		},
 	})

@@ -31,14 +31,13 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 	podIntervalCheck := h.PodCheckInterval
 	prometheusInternalCheck := h.PrometheusCheckInterval
 	// allow namespace interval overides
-	if podinterval, ok := namespace.ObjectMeta.Annotations["idling.amazee.io/pod-interval"]; ok {
+	if podinterval, ok := namespace.ObjectMeta.Annotations["idling.lagoon.sh/pod-interval"]; ok {
 		t, err := time.ParseDuration(podinterval)
 		if err == nil {
 			podIntervalCheck = t
 		}
-
 	}
-	if promethusinterval, ok := namespace.ObjectMeta.Annotations["idling.amazee.io/prometheus-interval"]; ok {
+	if promethusinterval, ok := namespace.ObjectMeta.Annotations["idling.lagoon.sh/prometheus-interval"]; ok {
 		t, err := time.ParseDuration(promethusinterval)
 		if err == nil {
 			prometheusInternalCheck = t
@@ -53,7 +52,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			for _, build := range builds.Items {
 				if build.Status.Phase == "Running" || build.Status.Phase == "Pending" {
 					// if we have any pending builds, break out of this loop and try the next namespace
-					opLog.Info(fmt.Sprintf("Environment has running build, skipping"))
+					opLog.Info("Environment has running build, skipping")
 					runningBuild = true
 					break
 				}
@@ -73,7 +72,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 		deployments := &appsv1.DeploymentList{}
 		if err := h.Client.List(ctx, deployments, listOption); err != nil {
 			// if we can't get any deployment configs for this namespace, log it and move on to the next
-			opLog.Error(err, fmt.Sprintf("Error getting deployments"))
+			opLog.Error(err, "Error getting deployments")
 			return
 		}
 		for _, deployment := range deployments.Items {
@@ -97,13 +96,13 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				})
 				if err := h.Client.List(ctx, pods, listOption); err != nil {
 					// if we can't get any pods for this deployment, log it and move on to the next
-					opLog.Error(err, fmt.Sprintf("Error listing pods"))
+					opLog.Error(err, "Error listing pods")
 					break
 				}
 				for _, pod := range pods.Items {
 					// check if the runtime of the pod is more than our interval
 					if pod.Status.StartTime != nil {
-						hs := time.Now().Sub(pod.Status.StartTime.Time)
+						hs := time.Since(pod.Status.StartTime.Time)
 						if h.Debug {
 							opLog.Info(fmt.Sprintf("Pod %s has been running for %v", pod.ObjectMeta.Name, hs))
 						}
@@ -119,7 +118,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 		if idle || forceIdle || forceScale {
 			numHits := 0
 			if !h.Selectors.Service.SkipHitCheck && !forceIdle && !forceScale {
-				opLog.Info(fmt.Sprintf("Environment marked for idling, checking routerlogs for hits"))
+				opLog.Info("Environment marked for idling, checking routerlogs for hits")
 				// query prometheus for hits to ingress resources in this namespace
 				v1api := prometheusapiv1.NewAPI(h.PrometheusClient)
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -149,7 +148,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				// if the hits are not 0, then the environment doesn't need to be idled
 				opLog.Info(fmt.Sprintf("Environment has had %d hits in the last %s", numHits, prometheusInternalCheck))
 				if numHits != 0 {
-					opLog.Info(fmt.Sprintf("Environment does not need idling"))
+					opLog.Info("Environment does not need idling")
 					return
 				}
 			}
@@ -159,19 +158,17 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			err := h.patchIngress(ctx, opLog, namespace)
 			if err != nil {
 				// if patching the ingress resources fail, then don't idle the environment
-				opLog.Info(fmt.Sprintf("Environment not idled due to errors patching ingress"))
+				opLog.Info("Environment not idled due to errors patching ingress")
 				return
 			}
-			opLog.Info(fmt.Sprintf("Environment will be idled"))
+			opLog.Info("Environment will be idled")
 			h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale)
 		}
 	}
 }
 
 func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployments *appsv1.DeploymentList, forceIdle, forceScale bool) {
-	d := []string{}
 	for _, deployment := range deployments.Items {
-		d = append(d, deployment.ObjectMeta.Name)
 		// @TODO: use the patch method for the k8s client for now, this seems to work just fine
 		// Patching the deployment also works as we patch the endpoints below
 		if !h.DryRun {
@@ -184,28 +181,53 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 				idleReplicas = deployment.Spec.Replicas
 			}
 			scaleDeployment := deployment.DeepCopy()
-			labels := map[string]string{
+			labels := map[string]interface{}{
 				// add the watch label so that the unidler knows to look at it
-				"idling.amazee.io/watch": "true",
-				"idling.amazee.io/idled": "true",
+				"idling.lagoon.sh/watch": "true",
+				"idling.lagoon.sh/idled": "true",
+			}
+			annotations := map[string]interface{}{
+				// add these annotations so user knows to look at them
+				"idling.lagoon.sh/idled-at":        time.Now().Format(time.RFC3339),
+				"idling.lagoon.sh/unidle-replicas": strconv.FormatInt(int64(*idleReplicas), 10),
+			}
+			if _, ok := scaleDeployment.ObjectMeta.Labels["idling.amazee.io/watch"]; ok {
+				// remove old amazee.io label
+				labels["idling.amazee.io/watch"] = nil
+			}
+			if _, ok := scaleDeployment.ObjectMeta.Labels["idling.amazee.io/idled"]; ok {
+				// remove old amazee.io label
+				labels["idling.amazee.io/idled"] = nil
+			}
+			if _, ok := scaleDeployment.ObjectMeta.Annotations["idling.amazee.io/idled-at"]; ok {
+				// remove old amazee.io annotation
+				annotations["idling.amazee.io/idled-at"] = nil
+			}
+			if _, ok := scaleDeployment.ObjectMeta.Annotations["idling.amazee.io/unidle-replicas"]; ok {
+				// remove old amazee.io annotation
+				annotations["idling.amazee.io/unidle-replicas"] = nil
 			}
 			if forceIdle {
-				labels["idling.amazee.io/force-idled"] = "true"
+				labels["idling.lagoon.sh/force-idled"] = "true"
+				if _, ok := scaleDeployment.ObjectMeta.Labels["idling.amazee.io/force-idled"]; ok {
+					// remove old amazee.io label
+					labels["idling.amazee.io/force-idled"] = nil
+				}
 			}
 			if forceScale {
-				labels["idling.amazee.io/force-scaled"] = "true"
+				labels["idling.lagoon.sh/force-scaled"] = "true"
+				if _, ok := scaleDeployment.ObjectMeta.Labels["idling.amazee.io/force-scaled"]; ok {
+					// remove old amazee.io label
+					labels["idling.amazee.io/force-scaled"] = nil
+				}
 			}
 			mergePatch, _ := json.Marshal(map[string]interface{}{
 				"spec": map[string]interface{}{
 					"replicas": 0,
 				},
 				"metadata": map[string]interface{}{
-					"labels": labels,
-					"annotations": map[string]string{
-						// add these annotations so user knows to look at them
-						"idling.amazee.io/idled-at":        time.Now().Format(time.RFC3339),
-						"idling.amazee.io/unidle-replicas": strconv.FormatInt(int64(*idleReplicas), 10),
-					},
+					"labels":      labels,
+					"annotations": annotations,
 				},
 			})
 			if err := h.Client.Patch(ctx, scaleDeployment, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
@@ -237,8 +259,8 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 		ingressList := &networkv1.IngressList{}
 		if err := h.Client.List(ctx, ingressList, listOption); err != nil {
 			// if we can't get any ingress for this namespace, log it and move on to the next
-			opLog.Error(err, fmt.Sprintf("Error getting ingress"))
-			return fmt.Errorf("Error getting ingress")
+			opLog.Error(err, "Error getting ingress")
+			return fmt.Errorf("error getting ingress")
 		}
 		patched := false
 		for _, ingress := range ingressList.Items {
@@ -246,8 +268,8 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 				ingressCopy := ingress.DeepCopy()
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
-						"labels": map[string]string{
-							"idling.amazee.io/idled": "true",
+						"labels": map[string]interface{}{
+							"idling.lagoon.sh/idled": "true",
 						},
 						"annotations": map[string]string{
 							// add the custom-http-errors annotation so that the unidler knows to handle this ingress
@@ -271,8 +293,8 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 			namespaceCopy := namespace.DeepCopy()
 			mergePatch, _ := json.Marshal(map[string]interface{}{
 				"metadata": map[string]interface{}{
-					"labels": map[string]string{
-						"idling.amazee.io/idled": "true",
+					"labels": map[string]interface{}{
+						"idling.lagoon.sh/idled": "true",
 					},
 				},
 			})
