@@ -1,5 +1,5 @@
 #!/bin/bash
-REPO=${2:-amazeeio}
+REPO=${2:-uselagoon}
 TAG=${1:-latest}
 IMGNAME=${3:-aergia}
 echo "Creating image for $REPO/${IMGNAME}:$TAG and pushing to docker hub"
