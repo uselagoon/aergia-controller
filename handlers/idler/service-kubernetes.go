@@ -126,7 +126,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				defer cancel()
 				// get the number of requests to any ingress in the exported namespace by status code
 				promQuery := fmt.Sprintf(
-					`round(sum(increase(nginx_ingress_controller_requests{exported_namespace="%s",status="200"}[%s])) by (status))`,
+					`round(sum(increase(nginx_ingress_controller_requests{exported_namespace="%s",status=~"2[0-9x]{2}"}[%s])) by (status))`,
 					namespace.ObjectMeta.Name,
 					prometheusInternalCheck,
 				)

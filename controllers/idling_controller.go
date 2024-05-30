@@ -20,9 +20,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/amazeeio/aergia-controller/handlers/idler"
-	"github.com/amazeeio/aergia-controller/handlers/unidler"
 	"github.com/go-logr/logr"
+	"github.com/uselagoon/aergia-controller/handlers/idler"
+	"github.com/uselagoon/aergia-controller/handlers/unidler"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"

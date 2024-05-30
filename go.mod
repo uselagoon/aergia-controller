@@ -1,4 +1,4 @@
-module github.com/amazeeio/aergia-controller
+module github.com/uselagoon/aergia-controller
 
 go 1.21
 
