@@ -55,7 +55,7 @@ To enable this functionality, set the following:
 - `--verify-secret=use-your-own-secret` or envvar `VERIFY_SECRET=use-your-own-secret`
 
 If the verification feature is enabled, and you need to unidle environments using tools that can't execute javascript, then it is possible to allow a namespace to override the feature by adding the following annotation to the namespace. Using the other allow/blocking mechanisms can then be used to restrict how the environment can unidle if required.
-* `idling.amazee.io/disable-request-verification=true` - set this to disable the hmac verification on a namespace if Aergia has unidling request verification turned on.
+* `idling.amazee.io/disable-request-verification=true` - set this to disable the hmac verification on a namespace if Aergia has unidling request verification turned on. This annotation is also supported on an ingress too, so that specific ingress can skip the verification requests.
 
 If you're using custom template overrides and enable this functionality, you will need to extend your `unidle.html` template with the additional changes to allow it to to perform the call back function or else environments will never unidle. See the bundled `unidle.html` file to see how this may differ from your custom templates.
 

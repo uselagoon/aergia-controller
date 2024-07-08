@@ -70,8 +70,6 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				opLog.Info(fmt.Sprintf("unable to get any namespaces: %v", err))
 				return
 			}
-			// if hmac verification is enabled, perform the verification of the request
-			signedNamespace, verfied := h.verifyRequest(r, namespace)
 			ingress := &networkv1.Ingress{}
 			if err := h.Client.Get(ctx, types.NamespacedName{
 				Namespace: ns,
@@ -82,6 +80,8 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				h.setMetrics(r, start)
 				return
 			}
+			// if hmac verification is enabled, perform the verification of the request
+			signedNamespace, verfied := h.verifyRequest(r, namespace, ingress)
 
 			xForwardedFor := strings.Split(r.Header.Get("X-Forwarded-For"), ",")
 			trueClientIP := r.Header.Get("True-Client-IP")
@@ -180,13 +180,21 @@ func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog log
 }
 
 // handle verifying the namespace name is signed by our secret
-func (h *Unidler) verifyRequest(r *http.Request, ns *corev1.Namespace) (string, bool) {
+func (h *Unidler) verifyRequest(r *http.Request, ns *corev1.Namespace, ingress *networkv1.Ingress) (string, bool) {
 	if h.VerifiedUnidling {
-		if val, ok := ns.ObjectMeta.Annotations["idling.amazee.io/disable-request-verification"]; ok {
+		if val, ok := ingress.ObjectMeta.Annotations["idling.amazee.io/disable-request-verification"]; ok {
 			t, _ := strconv.ParseBool(val)
-			if t == true {
+			if t {
 				return "", true
 			}
+			// otherwise fall through to namespace check
+		}
+		if val, ok := ns.ObjectMeta.Annotations["idling.amazee.io/disable-request-verification"]; ok {
+			t, _ := strconv.ParseBool(val)
+			if t {
+				return "", true
+			}
+			// fall through to verify the request
 		}
 		// if hmac verification is enabled, perform the verification of the request
 		signedNamespace := hmacSigner(ns.Name, []byte(h.VerifiedSecret))
