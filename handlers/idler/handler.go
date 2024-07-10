@@ -2,6 +2,7 @@ package idler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"time"
@@ -121,7 +122,7 @@ func execPod(
 	}
 
 	var stdout, stderr bytes.Buffer
-	err = exec.Stream(remotecommand.StreamOptions{
+	err = exec.StreamWithContext(context.Background(), remotecommand.StreamOptions{
 		Stdin:  stdin,
 		Stdout: &stdout,
 		Stderr: &stderr,

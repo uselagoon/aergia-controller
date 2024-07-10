@@ -32,14 +32,14 @@ metadata:
   name: example-nginx
   namespace: example-nginx
   labels:
-    idling.amazee.io/watch: 'true'
-    idling.amazee.io/idled: 'true'
+    idling.lagoon.sh/watch: 'true'
+    idling.lagoon.sh/idled: 'true'
     lagoon.sh/service: "nginx"
     lagoon.sh/project: example
     lagoon.sh/environment: "nginx"
     lagoon.sh/environmentType: "development"
   annotations:
-    idling.amazee.io/unidle-replicas: '3'
+    idling.lagoon.sh/unidle-replicas: '3'
 spec:
   replicas: 0
   selector:

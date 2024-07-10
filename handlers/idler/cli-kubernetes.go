@@ -34,7 +34,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 		} else {
 			for _, build := range builds.Items {
 				if build.Status.Phase == "Running" {
-					opLog.Info(fmt.Sprintf("Environment has running build, skipping"))
+					opLog.Info("Environment has running build, skipping")
 					runningBuild = true
 					break
 				}
@@ -53,7 +53,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 		})
 		deployments := &appsv1.DeploymentList{}
 		if err := h.Client.List(ctx, deployments, listOption); err != nil {
-			opLog.Error(err, fmt.Sprintf("Error getting deployments"))
+			opLog.Error(err, "Error getting deployments")
 		} else {
 			for _, deployment := range deployments.Items {
 				// if we have any services=cli, act on them
@@ -94,7 +94,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 						},
 					})
 					if err := h.Client.List(ctx, pods, listOption); err != nil {
-						opLog.Error(err, fmt.Sprintf("Error listing pods"))
+						opLog.Error(err, "Error listing pods")
 					} else {
 						for _, pod := range pods.Items {
 							processCount := 0

@@ -17,11 +17,6 @@ import (
 // +kubebuilder:rbac:groups=*,resources=ingresses,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=*,resources=ingress/status,verbs=get;update;patch
 
-type serviceIdler struct {
-	podInterval int
-	esInterval  string
-}
-
 // ServiceIdler will run the Service idler process.
 func (h *Idler) ServiceIdler() {
 	ctx := context.Background()
@@ -36,7 +31,7 @@ func (h *Idler) ServiceIdler() {
 	// @TODO: reintroduce this later on, since there are some cases where an environment is unidled where this
 	// does not get changed currently
 	// selector := generateSelector(idlerSelector{
-	// 	Name:     "idling.amazee.io/idled",
+	// 	Name:     "idling.lagoon.sh/idled",
 	// 	Operator: selection.NotEquals,
 	// 	Values: []string{
 	// 		"true",
@@ -66,7 +61,7 @@ func (h *Idler) ServiceIdler() {
 					WithValues("project", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName]).
 					WithValues("environment", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
 					WithValues("dry-run", h.DryRun)
-				envOpLog.Info(fmt.Sprintf("Checking namespace"))
+				envOpLog.Info("Checking namespace")
 				h.KubernetesServiceIdler(ctx, envOpLog, namespace, namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], false, false)
 			} else {
 				if h.Debug {

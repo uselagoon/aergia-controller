@@ -11,7 +11,7 @@ import (
 )
 
 func (h *Unidler) setMetrics(r *http.Request, start time.Time) {
-	duration := time.Now().Sub(start).Seconds()
+	duration := time.Since(start).Seconds()
 
 	proto := strconv.Itoa(r.ProtoMajor)
 	proto = fmt.Sprintf("%s.%s", proto, strconv.Itoa(r.ProtoMinor))
