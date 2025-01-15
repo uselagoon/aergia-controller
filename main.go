@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"time"
 
 	prometheusapi "github.com/prometheus/client_golang/api"
@@ -163,11 +164,10 @@ func main() {
 	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:             scheme,
-		MetricsBindAddress: metricsAddr,
-		LeaderElection:     enableLeaderElection,
-		LeaderElectionID:   "aergia-unidler-leader-election-helper",
-		Port:               9443,
+		Scheme:           scheme,
+		Metrics:          server.Options{BindAddress: metricsAddr},
+		LeaderElection:   enableLeaderElection,
+		LeaderElectionID: "aergia-unidler-leader-election-helper",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
