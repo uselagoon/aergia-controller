@@ -22,3 +22,9 @@ bin
 *.swp
 *.swo
 *~
+
+test-resources/test-suite.kind-config.yaml
+test-resources/test-suite.metallb-pool.yaml
+test/e2e/testdata/example-nginx.yaml
+
+local-dev
