@@ -13,13 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        kindest_node_version: [v1.25.16, v1.26.14, v1.27.11]
+        kindest_node_version: [v1.25.16, v1.26.15, v1.27.13, v1.28.9, v1.29.4, v1.30.2]
         experimental: [false]
-        include:
-          - kindest_node_version: v1.28.9
-            experimental: true
-          - kindest_node_version: v1.29.4
-            experimental: true
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -46,21 +41,48 @@ jobs:
         helm version
         kubebuilder version
         kind version
+
+    - name: Add dependency chart repos
+      run: |
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo add metallb https://metallb.github.io/metallb
+
+    - name: Install gojq
+      run: |
+        cd /tmp
+        curl -sSLO https://github.com/itchyny/gojq/releases/download/v0.11.1/gojq_v0.11.1_linux_amd64.tar.gz
+        tar -xf ./gojq_v0.11.1_linux_amd64.tar.gz
+        sudo cp /tmp/gojq_v0.11.1_linux_amd64/gojq /usr/local/bin/jq
+
+    - name: Configure node IP in kind-config.yaml
+      run: |
+        docker network create kind
+        LAGOON_KIND_CIDR_BLOCK=$(docker network inspect kind | jq '. [0].IPAM.Config[0].Subnet' | tr -d '"') 
+        export KIND_NODE_IP=$(echo ${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $1,$2,$3,240}' OFS='.')
+        envsubst < test-resources/test-suite.kind-config.yaml.tpl > test-resources/test-suite.kind-config.yaml
+        envsubst < test/e2e/testdata/example-nginx.yaml.tpl > test/e2e/testdata/example-nginx.yaml
+
     - name: Create kind cluster
-      uses: helm/kind-action@v1.9.0
+      uses: helm/kind-action@v1.10.0
       with:
-        version: v0.22.0
+        version: v0.24.0
+        cluster_name: aergia-controller
         node_image: kindest/node:${{ matrix.kindest_node_version }}
-        config: test-resources/kind-cluster.yaml
+        kubectl_version: v1.30.4
+        config: test-resources/test-suite.kind-config.yaml
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
+
     - name: Build
       uses: docker/build-push-action@v5
       with:
         context: .
         load: true
-        tags: testlagoon/aergia:test-tag
-    - name: Run Tests
+        tags: uselagoon/aergia:test-tag
+
+    - name: Run github/test-e2e
       run: |
-        kind load docker-image testlagoon/aergia:test-tag --name chart-testing
-        make controller-test
+        LAGOON_KIND_CIDR_BLOCK=$(docker network inspect kind | jq '. [0].IPAM.Config[0].Subnet' | tr -d '"') 
+        export KIND_NODE_IP=$(echo ${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $1,$2,$3,240}' OFS='.')
+        make github/test-e2e KIND_NETWORK=kind
