@@ -50,7 +50,7 @@ endif
 local-dev/kustomize:
 ifeq ($(KUSTOMIZE_VERSION), $(shell kustomize version 2>/dev/null | sed -nE 's/(v[0-9.]+).*/\1/p'))
 	$(info linking local kustomize version $(KUSTOMIZE_VERSION))
-	ln -sf $(shell command -v kind) ./local-dev/kind
+	ln -sf $(shell command -v kustomize) ./local-dev/kustomize
 else
 ifneq ($(KUSTOMIZE_VERSION), $(shell ./local-dev/kustomize version 2>/dev/null | sed -nE 's/(v[0-9.]+).*/\1/p'))
 	$(info downloading kustomize version $(KUSTOMIZE_VERSION) for $(ARCH))
