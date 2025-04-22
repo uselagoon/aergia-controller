@@ -3,7 +3,6 @@ package unidler
 import (
 	"context"
 	"fmt"
-	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -23,7 +22,6 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 		ctx := context.Background()
 		opLog := h.Log.WithValues("custom-default-backend", "request")
 		start := time.Now()
-		ext := "html"
 		// if debug is enabled, then set the headers in the response too
 		if os.Getenv("DEBUG") == "true" {
 			w.Header().Set(FormatHeader, r.Header.Get(FormatHeader))
@@ -41,15 +39,6 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			format = "text/html"
 		}
 
-		cext, err := mime.ExtensionsByType(format)
-		if err != nil {
-			// log.Printf("unexpected error reading media type extension: %v. Using %v", err, ext)
-			format = "text/html"
-		} else if len(cext) == 0 {
-			// log.Printf("couldn't get media type extension. Using %v", ext)
-		} else {
-			ext = cext[0]
-		}
 		w.Header().Set(ContentType, format)
 		w.Header().Set(AergiaHeader, "true")
 		w.Header().Set(CacheControl, "private,no-store")
@@ -77,7 +66,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				Name:      ingressName,
 			}, ingress); err != nil {
 				opLog.Info(fmt.Sprintf("Unable to get the ingress %s in %s", ingressName, ns))
-				h.genericError(w, r, opLog, ext, format, path, 400)
+				h.genericError(w, r, opLog, format, path, 400)
 				h.setMetrics(r, start)
 				return
 			}
@@ -147,19 +136,19 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				// respond with forbidden
 				w.Header().Set("X-Aergia-Denied", "true")
 				metrics.BlockedRequests.Inc()
-				h.genericError(w, r, opLog, ext, format, path, 403)
+				h.genericError(w, r, opLog, format, path, 403)
 			}
 		} else {
 			w.Header().Set("X-Aergia-Denied", "true")
 			w.Header().Set("X-Aergia-No-Namespace", "true")
 			metrics.NoNamespaceRequests.Inc()
-			h.genericError(w, r, opLog, ext, format, path, code)
+			h.genericError(w, r, opLog, format, path, code)
 		}
 		h.setMetrics(r, start)
 	}
 }
 
-func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog logr.Logger, format, path, verifier string, code int) {
+func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog logr.Logger, format, path string, code int) {
 	file := fmt.Sprintf("%v/error.html", path)
 	if h.Debug {
 		opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
@@ -178,7 +167,6 @@ func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog log
 		ServicePort:     r.Header.Get(ServicePort),
 		RequestID:       r.Header.Get(RequestID),
 		RefreshInterval: h.RefreshInterval,
-		Verifier:        verifier,
 	})
 }
 
