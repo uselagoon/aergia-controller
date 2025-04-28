@@ -1,5 +1,8 @@
 # Aergia
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/uselagoon/aergia-controller/badge)](https://securityscorecards.dev/viewer/?uri=github.com/uselagoon/aergia-controller)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10427/badge)](https://www.bestpractices.dev/projects/10427)
+
 > In Greek mythology, Aergia is the personification of sloth, idleness, indolence and laziness
 
 Aergia is a controller that can be used to scale deployments from zero when a request is made to an ingress with a zero scaled deployment.
