@@ -22,8 +22,6 @@ func (h *Idler) ServiceIdler() {
 	ctx := context.Background()
 
 	opLog := h.Log
-
-	listOption := &client.ListOptions{}
 	// in kubernetes, we can reliably check for the existence of this label so that
 	// we only check namespaces that have been deployed by a lagoon at one point
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Namespace)
@@ -38,7 +36,7 @@ func (h *Idler) ServiceIdler() {
 	// 	},
 	// })
 	// labelRequirements = append(labelRequirements, *selector)
-	listOption = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(labelRequirements...),
 		},
@@ -63,14 +61,12 @@ func (h *Idler) ServiceIdler() {
 					WithValues("dry-run", h.DryRun)
 				envOpLog.Info("Checking namespace")
 				h.KubernetesServiceIdler(ctx, envOpLog, namespace, namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], false, false)
-			} else {
-				if h.Debug {
-					opLog.Info(fmt.Sprintf("skipping namespace %s; type is %s, autoidle values are env:%s proj:%s",
-						namespace.ObjectMeta.Name,
-						environmentType,
-						environmentAutoIdle,
-						projectAutoIdle))
-				}
+			} else if h.Debug {
+				opLog.Info(fmt.Sprintf("skipping namespace %s; type is %s, autoidle values are env:%s proj:%s",
+					namespace.ObjectMeta.Name,
+					environmentType,
+					environmentAutoIdle,
+					projectAutoIdle))
 			}
 		} else {
 			if h.Debug {

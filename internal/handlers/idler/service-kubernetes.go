@@ -84,10 +84,8 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			if deployment.Spec.Replicas != zeroReps {
 				opLog.Info(fmt.Sprintf("Deployment %s has %d running replicas", deployment.ObjectMeta.Name, *deployment.Spec.Replicas))
 				checkPods = true
-			} else {
-				if h.Debug {
-					opLog.Info(fmt.Sprintf("Deployment %s already idled", deployment.ObjectMeta.Name))
-				}
+			} else if h.Debug {
+				opLog.Info(fmt.Sprintf("Deployment %s already idled", deployment.ObjectMeta.Name))
 			}
 			if checkPods {
 				pods := &corev1.PodList{}
@@ -144,7 +142,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					resultVal := result.(prometheusmodel.Vector)
 					for _, elem := range resultVal {
 						hits, _ := strconv.Atoi(elem.Value.String())
-						numHits = numHits + hits
+						numHits += hits
 					}
 				}
 				// if the hits are not 0, then the environment doesn't need to be idled
