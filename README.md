@@ -2,6 +2,7 @@
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/uselagoon/aergia-controller/badge)](https://securityscorecards.dev/viewer/?uri=github.com/uselagoon/aergia-controller)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10427/badge)](https://www.bestpractices.dev/projects/10427)
+[![coverage](https://raw.githubusercontent.com/uselagoon/aergia-controller/badges/.badges/main/coverage.svg)](https://github.com/uselagoon/aergia-controller/actions/workflows/coverage.yaml)
 
 > In Greek mythology, Aergia is the personification of sloth, idleness, indolence and laziness
 
