@@ -22,8 +22,6 @@ func (h *Idler) ServiceIdler() {
 	ctx := context.Background()
 
 	opLog := h.Log
-
-	listOption := &client.ListOptions{}
 	// in kubernetes, we can reliably check for the existence of this label so that
 	// we only check namespaces that have been deployed by a lagoon at one point
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Namespace)
@@ -38,7 +36,7 @@ func (h *Idler) ServiceIdler() {
 	// 	},
 	// })
 	// labelRequirements = append(labelRequirements, *selector)
-	listOption = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(labelRequirements...),
 		},
@@ -52,30 +50,28 @@ func (h *Idler) ServiceIdler() {
 	// loop over the namespaces
 	for _, namespace := range namespaces.Items {
 
-		projectAutoIdle, ok1 := namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectIdling]
-		environmentAutoIdle, ok2 := namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentIdling]
-		environmentType, ok3 := namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentType]
+		projectAutoIdle, ok1 := namespace.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectIdling]
+		environmentAutoIdle, ok2 := namespace.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentIdling]
+		environmentType, ok3 := namespace.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentType]
 		if ok1 && ok2 && ok3 {
 			if environmentAutoIdle == "1" && projectAutoIdle == "1" {
-				envOpLog := opLog.WithValues("namespace", namespace.ObjectMeta.Name).
-					WithValues("project", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName]).
-					WithValues("environment", namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
+				envOpLog := opLog.WithValues("namespace", namespace.Name).
+					WithValues("project", namespace.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName]).
+					WithValues("environment", namespace.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
 					WithValues("dry-run", h.DryRun)
 				envOpLog.Info("Checking namespace")
-				h.KubernetesServiceIdler(ctx, envOpLog, namespace, namespace.ObjectMeta.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], false, false)
-			} else {
-				if h.Debug {
-					opLog.Info(fmt.Sprintf("skipping namespace %s; type is %s, autoidle values are env:%s proj:%s",
-						namespace.ObjectMeta.Name,
-						environmentType,
-						environmentAutoIdle,
-						projectAutoIdle))
-				}
+				h.KubernetesServiceIdler(ctx, envOpLog, namespace, namespace.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], false, false)
+			} else if h.Debug {
+				opLog.Info(fmt.Sprintf("skipping namespace %s; type is %s, autoidle values are env:%s proj:%s",
+					namespace.Name,
+					environmentType,
+					environmentAutoIdle,
+					projectAutoIdle))
 			}
 		} else {
 			if h.Debug {
 				opLog.Info(fmt.Sprintf("skipping namespace %s; not in lagoon",
-					namespace.ObjectMeta.Name))
+					namespace.Name))
 			}
 		}
 	}

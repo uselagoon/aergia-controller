@@ -21,7 +21,7 @@ import (
 func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace) {
 	labelRequirements := generateLabelRequirements(h.Selectors.CLI.Builds)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-		client.InNamespace(namespace.ObjectMeta.Name),
+		client.InNamespace(namespace.Name),
 		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(labelRequirements...),
 		},
@@ -31,7 +31,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 	runningBuild := false
 	if !h.Selectors.CLI.SkipBuildCheck {
 		if err := h.Client.List(ctx, builds, listOption); err != nil {
-			opLog.Error(err, fmt.Sprintf("Error getting running builds for namespace %s", namespace.ObjectMeta.Name))
+			opLog.Error(err, fmt.Sprintf("Error getting running builds for namespace %s", namespace.Name))
 		} else {
 			for _, build := range builds.Items {
 				if build.Status.Phase == "Running" {
@@ -47,7 +47,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 		// @TODO: eventually replace the `lagoon.sh/service=cli` check with `lagoon.sh/service-type=cli|cli-persistent` for better coverage
 		labelRequirements := generateLabelRequirements(h.Selectors.CLI.Deployments)
 		listOption = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-			client.InNamespace(namespace.ObjectMeta.Name),
+			client.InNamespace(namespace.Name),
 			client.MatchingLabelsSelector{
 				Selector: labels.NewSelector().Add(labelRequirements...),
 			},
@@ -61,13 +61,13 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 				zeroReps := new(int32)
 				*zeroReps = 0
 				if deployment.Spec.Replicas != zeroReps {
-					opLog.Info(fmt.Sprintf("Deployment %s has %d running replicas", deployment.ObjectMeta.Name, *deployment.Spec.Replicas))
+					opLog.Info(fmt.Sprintf("Deployment %s has %d running replicas", deployment.Name, *deployment.Spec.Replicas))
 				} else {
-					opLog.Info(fmt.Sprintf("Deployment %s is already idled", deployment.ObjectMeta.Name))
+					opLog.Info(fmt.Sprintf("Deployment %s is already idled", deployment.Name))
 					break
 				}
 				if h.Debug {
-					opLog.Info(fmt.Sprintf("Checking deployment %s for cronjobs", deployment.ObjectMeta.Name))
+					opLog.Info(fmt.Sprintf("Checking deployment %s for cronjobs", deployment.Name))
 				}
 
 				hasCrons := false
@@ -77,7 +77,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 							if env.Name == "CRONJOBS" {
 								if len(env.Value) > 0 {
 									cronjobs := strings.Split(env.Value, `\n`)
-									opLog.Info(fmt.Sprintf("Deployment %s has %d cronjobs defined", deployment.ObjectMeta.Name, len(cronjobs)))
+									opLog.Info(fmt.Sprintf("Deployment %s has %d cronjobs defined", deployment.Name, len(cronjobs)))
 									hasCrons = true
 									break
 								}
@@ -89,7 +89,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 					pods := &corev1.PodList{}
 					labelRequirements := generateLabelRequirements(h.Selectors.CLI.Pods)
 					listOption = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-						client.InNamespace(namespace.ObjectMeta.Name),
+						client.InNamespace(namespace.Name),
 						client.MatchingLabelsSelector{
 							Selector: labels.NewSelector().Add(labelRequirements...),
 						},
@@ -101,16 +101,16 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 							processCount := 0
 							if !h.Selectors.CLI.SkipProcessCheck {
 								if h.Debug {
-									opLog.Info(fmt.Sprintf("Checking pod %s for running processes", pod.ObjectMeta.Name))
+									opLog.Info(fmt.Sprintf("Checking pod %s for running processes", pod.Name))
 								}
 								/*
 									Anything running with parent PID0 is likely a user process
 									/bin/bash -c "pgrep -P 0 | tail -n +3 | wc -l | tr -d ' '"
 								*/
 								var stdin io.Reader
-								stdout, _, err := execPod(pod.ObjectMeta.Name, namespace.ObjectMeta.Name, []string{`/bin/sh`, `-c`, `pgrep -P 0|tail -n +3|wc -l|tr -d ' '`}, stdin, false)
+								stdout, _, err := execPod(pod.Name, namespace.Name, []string{`/bin/sh`, `-c`, `pgrep -P 0|tail -n +3|wc -l|tr -d ' '`}, stdin, false)
 								if err != nil {
-									opLog.Error(err, fmt.Sprintf("Error when trying to exec to pod %s", pod.ObjectMeta.Name))
+									opLog.Error(err, fmt.Sprintf("Error when trying to exec to pod %s", pod.Name))
 									break
 								}
 								trimmed := strings.TrimSpace(string(stdout))
@@ -121,7 +121,7 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 									}
 								}
 								if processCount == 0 {
-									opLog.Info(fmt.Sprintf("Pod %s has no running processes, idling", pod.ObjectMeta.Name))
+									opLog.Info(fmt.Sprintf("Pod %s has no running processes, idling", pod.Name))
 								}
 							}
 							if processCount == 0 {
@@ -133,13 +133,13 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 										},
 									})
 									if err := h.Client.Patch(ctx, scaleDeployment, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
-										opLog.Error(err, fmt.Sprintf("Error scaling deployment %s", deployment.ObjectMeta.Name))
+										opLog.Error(err, fmt.Sprintf("Error scaling deployment %s", deployment.Name))
 									} else {
-										opLog.Info(fmt.Sprintf("Deployment %s scaled to 0", deployment.ObjectMeta.Name))
+										opLog.Info(fmt.Sprintf("Deployment %s scaled to 0", deployment.Name))
 									}
 									metrics.CliIdleEvents.Inc()
 								} else {
-									opLog.Info(fmt.Sprintf("Deployment %s would be scaled to 0", deployment.ObjectMeta.Name))
+									opLog.Info(fmt.Sprintf("Deployment %s would be scaled to 0", deployment.Name))
 								}
 							}
 						}

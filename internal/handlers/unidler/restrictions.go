@@ -64,11 +64,8 @@ func checkAgentAnnotations(annotation, ua string, g []string, ns, i map[string]s
 		// check for namespace annoation
 		if agents, ok := ns[annotation]; ok {
 			allow = checkAgents(strings.Split(agents, ","), ua)
-		} else {
-			// check for globals
-			if g != nil {
-				allow = checkAgents(g, ua)
-			}
+		} else if g != nil {
+			allow = checkAgents(g, ua)
 		}
 	}
 	return allow
@@ -84,11 +81,8 @@ func checkIPAnnotations(annotation, tcip string, xff, g []string, ns, i map[stri
 		// check for namespace annoation
 		if alist, ok := ns[annotation]; ok {
 			allow = checkIPList(strings.Split(alist, ","), xff, tcip)
-		} else {
-			// check for globals
-			if g != nil {
-				allow = checkIPList(g, xff, tcip)
-			}
+		} else if g != nil {
+			allow = checkIPList(g, xff, tcip)
 		}
 	}
 	return allow
