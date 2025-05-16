@@ -17,11 +17,10 @@ import (
 func (h *Idler) CLIIdler() {
 	ctx := context.Background()
 	opLog := h.Log.WithName("aergia-controller").WithName("CLIIdler")
-	listOption := &client.ListOptions{}
 	// in kubernetes, we can reliably check for the existence of this label so that
 	// we only check namespaces that have been deployed by a lagoon at one point
 	labelRequirements := generateLabelRequirements(h.Selectors.CLI.Namespace)
-	listOption = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(labelRequirements...),
 		},
@@ -42,13 +41,11 @@ func (h *Idler) CLIIdler() {
 					WithValues("dry-run", h.DryRun)
 				envOpLog.Info("Checking namespace")
 				h.kubernetesCLI(ctx, envOpLog, namespace)
-			} else {
-				if h.Debug {
-					opLog.Info(fmt.Sprintf("skipping namespace %s; autoidle values are env:%s proj:%s",
-						namespace.ObjectMeta.Name,
-						environmentAutoIdle,
-						projectAutoIdle))
-				}
+			} else if h.Debug {
+				opLog.Info(fmt.Sprintf("skipping namespace %s; autoidle values are env:%s proj:%s",
+					namespace.ObjectMeta.Name,
+					environmentAutoIdle,
+					projectAutoIdle))
 			}
 		} else {
 			if h.Debug {

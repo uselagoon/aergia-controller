@@ -118,7 +118,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				}
 				// then return the unidle template to the user
 				tmpl := template.Must(template.ParseFiles(file))
-				tmpl.ExecuteTemplate(w, "base", pageData{
+				_ = tmpl.ExecuteTemplate(w, "base", pageData{
 					ErrorCode:       strconv.Itoa(code),
 					FormatHeader:    r.Header.Get(FormatHeader),
 					CodeHeader:      r.Header.Get(CodeHeader),
@@ -154,7 +154,7 @@ func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog log
 		opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 	}
 	tmpl := template.Must(template.ParseFiles(file))
-	tmpl.ExecuteTemplate(w, "base", pageData{
+	_ = tmpl.ExecuteTemplate(w, "base", pageData{
 		ErrorCode:       strconv.Itoa(code),
 		ErrorMessage:    http.StatusText(code),
 		FormatHeader:    r.Header.Get(FormatHeader),

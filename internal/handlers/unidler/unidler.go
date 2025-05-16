@@ -186,7 +186,10 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	// this could still result in 503 for users until the resulting services/endpoints are active and receiving traffic
 	for _, deploy := range deployments.Items {
 		opLog.Info(fmt.Sprintf("Waiting for %s to be running - %s", deploy.ObjectMeta.Name, namespace.Name))
-		wait.PollUntilContextTimeout(ctx, defaultPollDuration, defaultPollTimeout, true, h.hasRunningPod(ctx, namespace.Name, deploy.Name))
+		err := wait.PollUntilContextTimeout(ctx, defaultPollDuration, defaultPollTimeout, true, h.hasRunningPod(ctx, namespace.Name, deploy.Name))
+		if err != nil {
+			opLog.Error(err, "error waiting for deployments")
+		}
 	}
 	// remove the 503 code from any ingress objects that have it in this namespace
 	h.removeCodeFromIngress(ctx, namespace.Name, opLog)
