@@ -16,7 +16,7 @@ jobs:
         go-version: stable
     - name: Calculate coverage
       run: |
-        go test -v -covermode=atomic -coverprofile=cover.out -coverpkg=./... ./...
+        go test -skip TestE2E -v -covermode=atomic -coverprofile=cover.out -coverpkg=./... ./...
     - name: Generage coverage badge
       uses: vladopajic/go-test-coverage@937b863f06595080198d555b7ed3aa474ae5199c # v2.14.1
       with:
