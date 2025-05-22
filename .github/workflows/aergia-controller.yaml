@@ -26,21 +26,6 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.23'
-    - name: Install kustomize, kubebuilder, helm
-      run: |
-        #kubebuilder
-        curl -sL https://github.com/kubernetes-sigs/kubebuilder/releases/download/v2.3.2/kubebuilder_2.3.2_linux_amd64.tar.gz | tar -xz -C /tmp/
-        sudo mkdir -p /usr/local/kubebuilder/bin
-        sudo mv /tmp/kubebuilder_2.3.2_linux_amd64/bin/* /usr/local/kubebuilder/bin
-        chmod +x /usr/local/kubebuilder/bin/*
-        echo "/usr/local/kubebuilder/bin" >> $GITHUB_PATH
-    - name: Check go, kustomize, kubebuilder, helm, docker-compose, kind versions
-      run: |
-        go version
-        kustomize version
-        helm version
-        kubebuilder version
-        kind version
 
     - name: Add dependency chart repos
       run: |
@@ -57,8 +42,9 @@ jobs:
     - name: Configure node IP in kind-config.yaml
       run: |
         docker network create kind
-        LAGOON_KIND_CIDR_BLOCK=$(docker network inspect kind | jq '. [0].IPAM.Config[0].Subnet' | tr -d '"') 
-        export KIND_NODE_IP=$(echo ${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $1,$2,$3,240}' OFS='.')
+        LAGOON_KIND_CIDR_BLOCK=$(docker network inspect kind | jq '. [0].IPAM.Config[0].Subnet' | tr -d '"')
+        KIND_NODE_IP=$(echo "${LAGOON_KIND_CIDR_BLOCK%???}" | awk -F'.' '{print $1,$2,$3,240}' OFS='.')
+        export KIND_NODE_IP
         envsubst < test-resources/test-suite.kind-config.yaml.tpl > test-resources/test-suite.kind-config.yaml
         envsubst < test/e2e/testdata/example-nginx.yaml.tpl > test/e2e/testdata/example-nginx.yaml
 
@@ -83,6 +69,7 @@ jobs:
 
     - name: Run github/test-e2e
       run: |
-        LAGOON_KIND_CIDR_BLOCK=$(docker network inspect kind | jq '. [0].IPAM.Config[0].Subnet' | tr -d '"') 
-        export KIND_NODE_IP=$(echo ${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $1,$2,$3,240}' OFS='.')
+        LAGOON_KIND_CIDR_BLOCK=$(docker network inspect kind | jq '. [0].IPAM.Config[0].Subnet' | tr -d '"')
+        KIND_NODE_IP=$(echo "${LAGOON_KIND_CIDR_BLOCK%???}" | awk -F'.' '{print $1,$2,$3,240}' OFS='.')
+        export KIND_NODE_IP
         make github/test-e2e KIND_NETWORK=kind

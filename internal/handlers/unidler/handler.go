@@ -82,7 +82,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			trueClientIP := r.Header.Get("True-Client-IP")
 			requestUserAgent := r.Header.Get("User-Agent")
 
-			allowUnidle := h.checkAccess(namespace.ObjectMeta.Annotations, ingress.ObjectMeta.Annotations, requestUserAgent, trueClientIP, xForwardedFor)
+			allowUnidle := h.checkAccess(namespace.Annotations, ingress.Annotations, requestUserAgent, trueClientIP, xForwardedFor)
 			// then run checks to start to unidle the environment
 			if allowUnidle {
 				// if a namespace exists, it means that the custom-http-errors code is defined in the ingress object
@@ -123,7 +123,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				}
 				// then return the unidle template to the user
 				tmpl := template.Must(template.ParseFiles(file))
-				tmpl.ExecuteTemplate(w, "base", pageData{
+				_ = tmpl.ExecuteTemplate(w, "base", pageData{
 					ErrorCode:       strconv.Itoa(code),
 					FormatHeader:    r.Header.Get(FormatHeader),
 					CodeHeader:      r.Header.Get(CodeHeader),
@@ -159,7 +159,7 @@ func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog log
 		opLog.Info(fmt.Sprintf("Serving custom error response for code %v and format %v from file %v", code, format, file))
 	}
 	tmpl := template.Must(template.ParseFiles(file))
-	tmpl.ExecuteTemplate(w, "base", pageData{
+	_ = tmpl.ExecuteTemplate(w, "base", pageData{
 		ErrorCode:       strconv.Itoa(code),
 		ErrorMessage:    http.StatusText(code),
 		FormatHeader:    r.Header.Get(FormatHeader),
@@ -178,14 +178,14 @@ func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog log
 // handle verifying the namespace name is signed by our secret
 func (h *Unidler) verifyRequest(r *http.Request, ns *corev1.Namespace, ingress *networkv1.Ingress) (string, bool) {
 	if h.VerifiedUnidling {
-		if val, ok := ingress.ObjectMeta.Annotations["idling.amazee.io/disable-request-verification"]; ok {
+		if val, ok := ingress.Annotations["idling.amazee.io/disable-request-verification"]; ok {
 			t, _ := strconv.ParseBool(val)
 			if t {
 				return "", true
 			}
 			// otherwise fall through to namespace check
 		}
-		if val, ok := ns.ObjectMeta.Annotations["idling.amazee.io/disable-request-verification"]; ok {
+		if val, ok := ns.Annotations["idling.amazee.io/disable-request-verification"]; ok {
 			t, _ := strconv.ParseBool(val)
 			if t {
 				return "", true

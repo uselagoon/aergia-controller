@@ -72,7 +72,7 @@ func (h *Unidler) removeCodeFromIngress(ctx context.Context, ns string, opLog lo
 		// if the nginx.ingress.kubernetes.io/custom-http-errors annotation is set
 		// then strip out the 503 error code that is there so that
 		// users will see their application errors rather than the loading page
-		if value, ok := ingress.ObjectMeta.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]; ok {
+		if value, ok := ingress.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]; ok {
 			newVals := removeStatusCode(value, "503")
 			// if the 503 code was removed from the annotation
 			// then patch it
@@ -91,12 +91,12 @@ func (h *Unidler) removeCodeFromIngress(ctx context.Context, ns string, opLog lo
 				patchIngress := ingress.DeepCopy()
 				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and patch the rest of the ingressses anyway (some is better than none?)
-					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s - %s", ingress.ObjectMeta.Name, ns))
+					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s - %s", ingress.Name, ns))
 				} else {
 					if newVals == nil {
-						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation removed - %s", ingress.ObjectMeta.Name, ns))
+						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation removed - %s", ingress.Name, ns))
 					} else {
-						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation patched with %s - %s", ingress.ObjectMeta.Name, *newVals, ns))
+						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation patched with %s - %s", ingress.Name, *newVals, ns))
 					}
 				}
 			}

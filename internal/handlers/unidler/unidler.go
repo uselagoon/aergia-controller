@@ -142,13 +142,13 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	}
 	for _, deploy := range deployments.Items {
 		// if the idled annotation is true
-		lv, lok := deploy.ObjectMeta.Labels["idling.amazee.io/idled"]
+		lv, lok := deploy.Labels["idling.amazee.io/idled"]
 		if lok && lv == "true" {
-			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v - %s", deploy.ObjectMeta.Name, *deploy.Spec.Replicas, namespace.Name))
+			opLog.Info(fmt.Sprintf("Deployment %s - Replicas %v - %s", deploy.Name, *deploy.Spec.Replicas, namespace.Name))
 			if *deploy.Spec.Replicas == 0 {
 				// default to scaling to 1 replica
 				newReplicas := 1
-				if value, ok := deploy.ObjectMeta.Annotations["idling.amazee.io/unidle-replicas"]; ok {
+				if value, ok := deploy.Annotations["idling.amazee.io/unidle-replicas"]; ok {
 					// but if the value of the annotation is greater than 0, use what is in the annotation instead
 					unidleReplicas, err := strconv.Atoi(value)
 					if err == nil {
@@ -175,9 +175,9 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 				scaleDepConf := deploy.DeepCopy()
 				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
-					opLog.Info(fmt.Sprintf("Error scaling deployment %s - %s", deploy.ObjectMeta.Name, namespace.Name))
+					opLog.Info(fmt.Sprintf("Error scaling deployment %s - %s", deploy.Name, namespace.Name))
 				} else {
-					opLog.Info(fmt.Sprintf("Deployment %s scaled to %d - %s", deploy.ObjectMeta.Name, newReplicas, namespace.Name))
+					opLog.Info(fmt.Sprintf("Deployment %s scaled to %d - %s", deploy.Name, newReplicas, namespace.Name))
 				}
 			}
 		}
@@ -185,8 +185,11 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	// now wait for the pods of these deployments to be ready
 	// this could still result in 503 for users until the resulting services/endpoints are active and receiving traffic
 	for _, deploy := range deployments.Items {
-		opLog.Info(fmt.Sprintf("Waiting for %s to be running - %s", deploy.ObjectMeta.Name, namespace.Name))
-		wait.PollUntilContextTimeout(ctx, defaultPollDuration, defaultPollTimeout, true, h.hasRunningPod(ctx, namespace.Name, deploy.Name))
+		opLog.Info(fmt.Sprintf("Waiting for %s to be running - %s", deploy.Name, namespace.Name))
+		err := wait.PollUntilContextTimeout(ctx, defaultPollDuration, defaultPollTimeout, true, h.hasRunningPod(ctx, namespace.Name, deploy.Name))
+		if err != nil {
+			opLog.Error(err, "error waiting for deployments")
+		}
 	}
 	// remove the 503 code from any ingress objects that have it in this namespace
 	h.removeCodeFromIngress(ctx, namespace.Name, opLog)

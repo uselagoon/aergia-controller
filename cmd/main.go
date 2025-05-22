@@ -145,15 +145,8 @@ func main() {
 	}))
 
 	// read the selector file into idlerdata struct.
-	file, err := os.Open(selectorsFile)
+	selectors, err := readSelectors(selectorsFile)
 	if err != nil {
-		setupLog.Error(err, "unable to open selectors file")
-		os.Exit(1)
-	}
-	defer file.Close()
-	d := yaml.NewDecoder(file)
-	selectors := &idler.Data{}
-	if err := d.Decode(&selectors); err != nil {
 		setupLog.Error(err, "unable to decode selectors yaml")
 		os.Exit(1)
 	}
@@ -245,16 +238,22 @@ func main() {
 	// CLI Idler
 	if enableCLIIdler {
 		setupLog.Info("starting cli idler")
-		c.AddFunc(cliCron, func() {
+		_, err := c.AddFunc(cliCron, func() {
 			idler.CLIIdler()
 		})
+		if err != nil {
+			setupLog.Error(err, "unable to create cli idler cronjob", "controller", "Idling")
+		}
 	}
 	// Service Idler
 	if enableServiceIdler {
 		setupLog.Info("starting service idler")
-		c.AddFunc(serviceCron, func() {
+		_, err := c.AddFunc(serviceCron, func() {
 			idler.ServiceIdler()
 		})
+		if err != nil {
+			setupLog.Error(err, "unable to create service idler cronjob", "controller", "Idling")
+		}
 	}
 	// start crons.
 	c.Start()
@@ -279,4 +278,18 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func readSelectors(selectorsFile string) (*idler.Data, error) {
+	file, err := os.Open(selectorsFile)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	d := yaml.NewDecoder(file)
+	selectors := &idler.Data{}
+	if err := d.Decode(&selectors); err != nil {
+		return nil, err
+	}
+	return selectors, nil
 }

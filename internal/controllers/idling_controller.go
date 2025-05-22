@@ -49,9 +49,9 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
-	if val, ok := namespace.ObjectMeta.Labels["idling.amazee.io/force-scaled"]; ok && val == "true" {
+	if val, ok := namespace.Labels["idling.amazee.io/force-scaled"]; ok && val == "true" {
 		opLog.Info(fmt.Sprintf("Force scaling environment %s", namespace.Name))
-		r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, namespace.ObjectMeta.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName], false, true)
+		r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, namespace.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName], false, true)
 		nsMergePatch, _ := json.Marshal(map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"labels": map[string]*string{
@@ -66,9 +66,9 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	if val, ok := namespace.ObjectMeta.Labels["idling.amazee.io/force-idled"]; ok && val == "true" {
+	if val, ok := namespace.Labels["idling.amazee.io/force-idled"]; ok && val == "true" {
 		opLog.Info(fmt.Sprintf("Force idling environment %s", namespace.Name))
-		r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, namespace.ObjectMeta.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName], true, false)
+		r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, namespace.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName], true, false)
 		nsMergePatch, _ := json.Marshal(map[string]interface{}{
 			"metadata": map[string]interface{}{
 				"labels": map[string]*string{
@@ -83,7 +83,7 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, nil
 	}
 
-	if val, ok := namespace.ObjectMeta.Labels["idling.amazee.io/unidle"]; ok && val == "true" {
+	if val, ok := namespace.Labels["idling.amazee.io/unidle"]; ok && val == "true" {
 		opLog.Info(fmt.Sprintf("Unidling environment %s", namespace.Name))
 		r.Unidler.Unidle(ctx, &namespace, opLog)
 		nsMergePatch, _ := json.Marshal(map[string]interface{}{

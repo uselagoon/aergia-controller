@@ -24,7 +24,7 @@ import (
 func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string, forceIdle, forceScale bool) {
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Builds)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-		client.InNamespace(namespace.ObjectMeta.Name),
+		client.InNamespace(namespace.Name),
 		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(labelRequirements...),
 		},
@@ -32,14 +32,14 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 	podIntervalCheck := h.PodCheckInterval
 	prometheusInternalCheck := h.PrometheusCheckInterval
 	// allow namespace interval overides
-	if podinterval, ok := namespace.ObjectMeta.Annotations["idling.amazee.io/pod-interval"]; ok {
+	if podinterval, ok := namespace.Annotations["idling.amazee.io/pod-interval"]; ok {
 		t, err := time.ParseDuration(podinterval)
 		if err == nil {
 			podIntervalCheck = t
 		}
 
 	}
-	if promethusinterval, ok := namespace.ObjectMeta.Annotations["idling.amazee.io/prometheus-interval"]; ok {
+	if promethusinterval, ok := namespace.Annotations["idling.amazee.io/prometheus-interval"]; ok {
 		t, err := time.ParseDuration(promethusinterval)
 		if err == nil {
 			prometheusInternalCheck = t
@@ -49,7 +49,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 	runningBuild := false
 	if !h.Selectors.Service.SkipBuildCheck {
 		if err := h.Client.List(ctx, builds, listOption); err != nil {
-			opLog.Error(err, fmt.Sprintf("Error getting running builds for namespace %s", namespace.ObjectMeta.Name))
+			opLog.Error(err, fmt.Sprintf("Error getting running builds for namespace %s", namespace.Name))
 		} else {
 			for _, build := range builds.Items {
 				if build.Status.Phase == "Running" || build.Status.Phase == "Pending" {
@@ -65,7 +65,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 	if !runningBuild {
 		labelRequirements := generateLabelRequirements(h.Selectors.Service.Deployments)
 		listOption = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-			client.InNamespace(namespace.ObjectMeta.Name),
+			client.InNamespace(namespace.Name),
 			client.MatchingLabelsSelector{
 				Selector: labels.NewSelector().Add(labelRequirements...),
 			},
@@ -82,19 +82,17 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			zeroReps := new(int32)
 			*zeroReps = 0
 			if deployment.Spec.Replicas != zeroReps {
-				opLog.Info(fmt.Sprintf("Deployment %s has %d running replicas", deployment.ObjectMeta.Name, *deployment.Spec.Replicas))
+				opLog.Info(fmt.Sprintf("Deployment %s has %d running replicas", deployment.Name, *deployment.Spec.Replicas))
 				checkPods = true
-			} else {
-				if h.Debug {
-					opLog.Info(fmt.Sprintf("Deployment %s already idled", deployment.ObjectMeta.Name))
-				}
+			} else if h.Debug {
+				opLog.Info(fmt.Sprintf("Deployment %s already idled", deployment.Name))
 			}
 			if checkPods {
 				pods := &corev1.PodList{}
 				// pods in kubernetes have the label `h.Selectors.ServiceName` with the name of the deployment in it
 				listOption = (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-					client.InNamespace(namespace.ObjectMeta.Name),
-					client.MatchingLabels(map[string]string{h.Selectors.ServiceName: deployment.ObjectMeta.Name}),
+					client.InNamespace(namespace.Name),
+					client.MatchingLabels(map[string]string{h.Selectors.ServiceName: deployment.Name}),
 				})
 				if err := h.Client.List(ctx, pods, listOption); err != nil {
 					// if we can't get any pods for this deployment, log it and move on to the next
@@ -106,7 +104,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					if pod.Status.StartTime != nil {
 						hs := time.Since(pod.Status.StartTime.Time)
 						if h.Debug {
-							opLog.Info(fmt.Sprintf("Pod %s has been running for %v", pod.ObjectMeta.Name, hs))
+							opLog.Info(fmt.Sprintf("Pod %s has been running for %v", pod.Name, hs))
 						}
 						if hs > podIntervalCheck {
 							// if it is, set the idle flag
@@ -128,7 +126,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				// get the number of requests to any ingress in the exported namespace by status code
 				promQuery := fmt.Sprintf(
 					`round(sum(increase(nginx_ingress_controller_requests{exported_namespace="%s",status=~"2[0-9x]{2}"}[%s])) by (status))`,
-					namespace.ObjectMeta.Name,
+					namespace.Name,
 					prometheusInternalCheck,
 				)
 				result, warnings, err := v1api.Query(ctx, promQuery, time.Now())
@@ -144,7 +142,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					resultVal := result.(prometheusmodel.Vector)
 					for _, elem := range resultVal {
 						hits, _ := strconv.Atoi(elem.Value.String())
-						numHits = numHits + hits
+						numHits += hits
 					}
 				}
 				// if the hits are not 0, then the environment doesn't need to be idled
@@ -209,12 +207,12 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 			})
 			if err := h.Client.Patch(ctx, scaleDeployment, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 				// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
-				opLog.Info(fmt.Sprintf("Error scaling deployment %s", deployment.ObjectMeta.Name))
+				opLog.Info(fmt.Sprintf("Error scaling deployment %s", deployment.Name))
 			} else {
-				opLog.Info(fmt.Sprintf("Deployment %s scaled to 0", deployment.ObjectMeta.Name))
+				opLog.Info(fmt.Sprintf("Deployment %s scaled to 0", deployment.Name))
 			}
 		} else {
-			opLog.Info(fmt.Sprintf("Deployment %s would be scaled to 0", deployment.ObjectMeta.Name))
+			opLog.Info(fmt.Sprintf("Deployment %s would be scaled to 0", deployment.Name))
 		}
 	}
 }
@@ -228,7 +226,7 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 	if !h.Selectors.Service.SkipIngressPatch {
 		labelRequirements := generateLabelRequirements(h.Selectors.Service.Ingress)
 		listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
-			client.InNamespace(namespace.ObjectMeta.Name),
+			client.InNamespace(namespace.Name),
 			client.MatchingLabelsSelector{
 				Selector: labels.NewSelector().Add(labelRequirements...),
 			},
@@ -256,13 +254,13 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 				})
 				if err := h.Client.Patch(ctx, ingressCopy, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and patch the other ingress anyway (some idled is better than none?)
-					opLog.Info(fmt.Sprintf("Error patching ingress %s", ingress.ObjectMeta.Name))
-					return fmt.Errorf("error patching ingress %s", ingress.ObjectMeta.Name)
+					opLog.Info(fmt.Sprintf("Error patching ingress %s", ingress.Name))
+					return fmt.Errorf("error patching ingress %s", ingress.Name)
 				}
-				opLog.Info(fmt.Sprintf("Ingress %s patched", ingress.ObjectMeta.Name))
+				opLog.Info(fmt.Sprintf("Ingress %s patched", ingress.Name))
 				patched = true
 			} else {
-				opLog.Info(fmt.Sprintf("Ingress %s would be patched", ingress.ObjectMeta.Name))
+				opLog.Info(fmt.Sprintf("Ingress %s would be patched", ingress.Name))
 			}
 		}
 		if patched {
