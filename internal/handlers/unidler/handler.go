@@ -39,6 +39,11 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			format = "text/html"
 		}
 
+		// Browser may send a list of accepted formats, but we only want the first reported content type for the response
+		if strings.Contains(format, ",") {
+			format = strings.Split(format, ",")[0]
+		}
+
 		w.Header().Set(ContentType, format)
 		w.Header().Set(AergiaHeader, "true")
 		w.Header().Set(CacheControl, "private,no-store")
