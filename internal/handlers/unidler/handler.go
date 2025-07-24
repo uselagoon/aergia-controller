@@ -51,7 +51,7 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 		errCode := r.Header.Get(CodeHeader)
 		code, err := strconv.Atoi(errCode)
 		if err != nil {
-			code = 404
+			code = h.DefaultHTTPErrorCode
 		}
 		w.WriteHeader(code)
 		ns := r.Header.Get(Namespace)

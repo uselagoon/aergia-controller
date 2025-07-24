@@ -33,18 +33,19 @@ const (
 
 // Unidler is the client structure for http handlers.
 type Unidler struct {
-	Client            ctrlClient.Client
-	Log               logr.Logger
-	RefreshInterval   int
-	UnidlerHTTPPort   int
-	Debug             bool
-	VerifiedUnidling  bool
-	VerifiedSecret    string
-	Locks             sync.Map
-	AllowedUserAgents []string
-	BlockedUserAgents []string
-	AllowedIPs        []string
-	BlockedIPs        []string
+	Client               ctrlClient.Client
+	Log                  logr.Logger
+	RefreshInterval      int
+	UnidlerHTTPPort      int
+	Debug                bool
+	VerifiedUnidling     bool
+	VerifiedSecret       string
+	Locks                sync.Map
+	AllowedUserAgents    []string
+	BlockedUserAgents    []string
+	AllowedIPs           []string
+	BlockedIPs           []string
+	DefaultHTTPErrorCode int
 }
 
 type pageData struct {
