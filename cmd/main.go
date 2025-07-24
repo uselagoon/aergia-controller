@@ -74,6 +74,8 @@ func main() {
 	var verifiedUnidling bool
 	var verifiedSecret string
 
+	var defaultHTTPResponseCode int
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
@@ -108,11 +110,13 @@ func main() {
 	flag.StringVar(&verifiedSecret, "verify-secret", "super-secret-string",
 		"The secret to use for verifying unidling requests.")
 	flag.IntVar(&unidlerHTTPPort, "unidler-port", 5000, "Port for the unidler service to listen on.")
+	flag.IntVar(&defaultHTTPResponseCode, "default-http-response-code", 404, "Default HTTP response code.")
 	flag.Parse()
 
 	selectorsFile = variables.GetEnv("SELECTORS_YAML_FILE", selectorsFile)
 	verifiedUnidling = variables.GetEnvBool("VERIFIED_UNIDLING", verifiedUnidling)
 	verifiedSecret = variables.GetEnv("VERIFY_SECRET", verifiedSecret)
+	defaultHTTPResponseCode = variables.GetEnvInt("DEFAULT_HTTP_RESPONSE_CODE", defaultHTTPResponseCode)
 
 	dryRun = variables.GetEnvBool("DRY_RUN", dryRun)
 
@@ -198,17 +202,18 @@ func main() {
 	allowedIPs, _ := unidler.ReadSliceFromFile("/lists/allowedips")
 	blockedIPs, _ := unidler.ReadSliceFromFile("/lists/blockedips")
 	u := &unidler.Unidler{
-		Client:            mgr.GetClient(),
-		Log:               ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
-		RefreshInterval:   refreshInterval,
-		Debug:             debug,
-		AllowedUserAgents: allowedAgents,
-		BlockedUserAgents: blockedAgents,
-		AllowedIPs:        allowedIPs,
-		BlockedIPs:        blockedIPs,
-		UnidlerHTTPPort:   unidlerHTTPPort,
-		VerifiedUnidling:  verifiedUnidling,
-		VerifiedSecret:    verifiedSecret,
+		Client:                  mgr.GetClient(),
+		Log:                     ctrl.Log.WithName("aergia-controller").WithName("Unidler"),
+		RefreshInterval:         refreshInterval,
+		Debug:                   debug,
+		AllowedUserAgents:       allowedAgents,
+		BlockedUserAgents:       blockedAgents,
+		AllowedIPs:              allowedIPs,
+		BlockedIPs:              blockedIPs,
+		UnidlerHTTPPort:         unidlerHTTPPort,
+		VerifiedUnidling:        verifiedUnidling,
+		VerifiedSecret:          verifiedSecret,
+		DefaultHTTPResponseCode: defaultHTTPResponseCode,
 	}
 
 	prometheusClient, err := prometheusapi.NewClient(prometheusapi.Config{

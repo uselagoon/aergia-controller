@@ -295,6 +295,14 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			fmt.Printf("metrics: %s", string(output))
 			err = utils.CheckStringContainsStrings(string(output), metricLabels)
 			gomega.ExpectWithOffset(2, err).NotTo(gomega.HaveOccurred())
+
+			// verify that default HTTP response code is 404
+			ginkgo.By("validating default HTTP response code")
+			runCmd = fmt.Sprintf(`curl -s -I http://non-existing-domain.%s.nip.io/`, kindIP)
+			output, _ = utils.RunCommonsCommand(namespace, runCmd)
+			fmt.Printf("curl: %s", string(output))
+			err = utils.CheckStringContainsStrings(string(output), []string{"404 Not Found"})
+			gomega.ExpectWithOffset(2, err).NotTo(gomega.HaveOccurred())
 			// End tests
 		})
 	})
