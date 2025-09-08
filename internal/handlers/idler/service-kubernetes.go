@@ -10,6 +10,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/uselagoon/aergia-controller/internal/handlers/metrics"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -163,6 +164,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			}
 			opLog.Info("Environment will be idled")
 			h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale)
+			h.idleCronjobs(ctx, opLog, namespace.Name, forceIdle, forceScale)
 		}
 	}
 }
@@ -213,6 +215,60 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 			}
 		} else {
 			opLog.Info(fmt.Sprintf("Deployment %s would be scaled to 0", deployment.Name))
+		}
+	}
+}
+
+func (h *Idler) idleCronjobs(ctx context.Context, opLog logr.Logger, namespace string, forceIdle, forceScale bool) {
+	labelRequirements := generateLabelRequirements(h.Selectors.Service.Deployments)
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabelsSelector{
+			Selector: labels.NewSelector().Add(labelRequirements...),
+		},
+	})
+	cronjobs := &batchv1.CronJobList{}
+	if err := h.Client.List(ctx, cronjobs, listOption); err != nil {
+		// if we can't get any deployment configs for this namespace, log it and move on to the next
+		opLog.Error(err, "Error getting deployments")
+		return
+	}
+	for _, cronjob := range cronjobs.Items {
+		// @TODO: use the patch method for the k8s client for now, this seems to work just fine
+		// Patching the deployment also works as we patch the endpoints below
+		if !h.DryRun {
+			suspendCronjob := cronjob.DeepCopy()
+			labels := map[string]string{
+				// add the watch label so that the unidler knows to look at it
+				"idling.amazee.io/watch": "true",
+				"idling.amazee.io/idled": "true",
+			}
+			if forceIdle {
+				labels["idling.amazee.io/force-idled"] = "true"
+			}
+			if forceScale {
+				labels["idling.amazee.io/force-scaled"] = "true"
+			}
+			mergePatch, _ := json.Marshal(map[string]interface{}{
+				"spec": map[string]interface{}{
+					"suspend": true, // suspend the cronjob
+				},
+				"metadata": map[string]interface{}{
+					"labels": labels,
+					"annotations": map[string]string{
+						// add these annotations so user knows to look at them
+						"idling.amazee.io/idled-at": time.Now().Format(time.RFC3339),
+					},
+				},
+			})
+			if err := h.Client.Patch(ctx, suspendCronjob, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+				// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
+				opLog.Info(fmt.Sprintf("Error suspending cronjob %s", cronjob.Name))
+			} else {
+				opLog.Info(fmt.Sprintf("Cronjob %s suspended", cronjob.Name))
+			}
+		} else {
+			opLog.Info(fmt.Sprintf("Cronjob %s would suspend", cronjob.Name))
 		}
 	}
 }
