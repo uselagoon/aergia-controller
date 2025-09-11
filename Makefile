@@ -17,8 +17,8 @@ KIND_NETWORK ?= aergia-controller
 
 TIMEOUT = 30m
 
-KIND_VERSION = v0.25.0
-KUBECTL_VERSION := v1.31.0
+KIND_VERSION = v0.27.0
+KUBECTL_VERSION := v1.32.3
 HELM_VERSION := v3.16.1
 GOJQ_VERSION = v0.12.16
 KUSTOMIZE_VERSION := v5.4.3
@@ -35,7 +35,7 @@ ARCH := $(shell uname | tr '[:upper:]' '[:lower:]')
 local-dev/kind:
 ifeq ($(KIND_VERSION), $(shell kind version 2>/dev/null | sed -nE 's/kind (v[0-9.]+).*/\1/p'))
 	$(info linking local kind version $(KIND_VERSION))
-	ln -sf $(shell command -v kind) ./local-dev/kind
+	$(eval KIND = $(realpath $(shell command -v kind)))
 else
 ifneq ($(KIND_VERSION), $(shell ./local-dev/kind version 2>/dev/null | sed -nE 's/kind (v[0-9.]+).*/\1/p'))
 	$(info downloading kind version $(KIND_VERSION) for $(ARCH))
@@ -50,10 +50,11 @@ endif
 local-dev/kustomize:
 ifeq ($(KUSTOMIZE_VERSION), $(shell kustomize version 2>/dev/null | sed -nE 's/(v[0-9.]+).*/\1/p'))
 	$(info linking local kustomize version $(KUSTOMIZE_VERSION))
-	ln -sf $(shell command -v kustomize) ./local-dev/kustomize
+	$(eval KUSTOMIZE = $(realpath $(shell command -v kustomize)))
 else
 ifneq ($(KUSTOMIZE_VERSION), $(shell ./local-dev/kustomize version 2>/dev/null | sed -nE 's/(v[0-9.]+).*/\1/p'))
 	$(info downloading kustomize version $(KUSTOMIZE_VERSION) for $(ARCH))
+	mkdir -p local-dev
 	rm local-dev/kustomize || true
 	curl -sSL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F$(KUSTOMIZE_VERSION)/kustomize_$(KUSTOMIZE_VERSION)_$(ARCH)_amd64.tar.gz | tar -xzC local-dev
 	chmod a+x local-dev/kustomize
@@ -64,10 +65,11 @@ endif
 local-dev/helm:
 ifeq ($(HELM_VERSION), $(shell helm version --short --client 2>/dev/null | sed -nE 's/(v[0-9.]+).*/\1/p'))
 	$(info linking local helm version $(HELM_VERSION))
-	ln -sf $(shell command -v helm) ./local-dev/helm
+	$(eval HELM = $(realpath $(shell command -v helm)))
 else
 ifneq ($(HELM_VERSION), $(shell ./local-dev/helm version --short --client 2>/dev/null | sed -nE 's/(v[0-9.]+).*/\1/p'))
 	$(info downloading helm version $(HELM_VERSION) for $(ARCH))
+	mkdir -p local-dev
 	rm local-dev/helm || true
 	curl -sSL https://get.helm.sh/helm-$(HELM_VERSION)-$(ARCH)-amd64.tar.gz | tar -xzC local-dev --strip-components=1 $(ARCH)-amd64/helm
 	chmod a+x local-dev/helm
@@ -78,10 +80,11 @@ endif
 local-dev/jq:
 ifeq ($(GOJQ_VERSION), $(shell gojq -v 2>/dev/null | sed -nE 's/gojq ([0-9.]+).*/v\1/p'))
 	$(info linking local gojq version $(GOJQ_VERSION))
-	ln -sf $(shell command -v gojq) ./local-dev/jq
+	$(eval JQ = $(realpath $(shell command -v gojq)))
 else
 ifneq ($(GOJQ_VERSION), $(shell ./local-dev/jq -v 2>/dev/null | sed -nE 's/gojq ([0-9.]+).*/v\1/p'))
 	$(info downloading gojq version $(GOJQ_VERSION) for $(ARCH))
+	mkdir -p local-dev
 	rm local-dev/jq || true
 ifeq ($(ARCH), darwin)
 	TMPDIR=$$(mktemp -d) \
@@ -99,12 +102,13 @@ endif
 local-dev/kubectl:
 ifeq ($(KUBECTL_VERSION), $(shell kubectl version --client 2>/dev/null | grep Client | sed -E 's/Client Version: (v[0-9.]+).*/\1/'))
 	$(info linking local kubectl version $(KUBECTL_VERSION))
-	ln -sf $(shell command -v kubectl) ./local-dev/kubectl
+	$(eval KUBECTL = $(realpath $(shell command -v kubectl)))
 else
 ifneq ($(KUBECTL_VERSION), $(shell ./local-dev/kubectl version --client 2>/dev/null | grep Client | sed -E 's/Client Version: (v[0-9.]+).*/\1/'))
 	$(info downloading kubectl version $(KUBECTL_VERSION) for $(ARCH))
+	mkdir -p local-dev
 	rm local-dev/kubectl || true
-	curl -sSLo local-dev/kubectl https://storage.googleapis.com/kubernetes-release/release/$(KUBECTL_VERSION)/bin/$(ARCH)/amd64/kubectl
+	curl -sSLo local-dev/kubectl https://dl.k8s.io/release/$(KUBECTL_VERSION)/bin/$(ARCH)/amd64/kubectl
 	chmod a+x local-dev/kubectl
 endif
 endif
@@ -224,12 +228,11 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: create-kind-cluster
 create-kind-cluster: local-dev/tools helm/repos
 	docker network inspect $(KIND_NETWORK) >/dev/null || docker network create $(KIND_NETWORK) \
-		&& LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '. [0].IPAM.Config[0].Subnet' | tr -d '"') \
-		&& export KIND_NODE_IP=$$(echo $${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $$1,$$2,$$3,240}' OFS='.') \
- 		&& envsubst < test-resources/test-suite.kind-config.yaml.tpl > test-resources/test-suite.kind-config.yaml \
- 		&& envsubst < test/e2e/testdata/example-nginx.yaml.tpl > test/e2e/testdata/example-nginx.yaml \
 		&& export KIND_EXPERIMENTAL_DOCKER_NETWORK=$(KIND_NETWORK) \
  		&& $(KIND) create cluster --wait=60s --name=$(KIND_CLUSTER) --config=test-resources/test-suite.kind-config.yaml
+	LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '.[].Containers[].IPv4Address' | tr -d '"') \
+		&& export KIND_NODE_IP=$$(echo $${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $$1,$$2,$$3,240}' OFS='.') \
+ 		&& envsubst < test/e2e/testdata/example-nginx.yaml.tpl > test/e2e/testdata/example-nginx.yaml
 
 # Create a kind cluster locally and run the test e2e test suite against it
 .PHONY: kind/test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up locally
@@ -240,7 +243,7 @@ kind/re-test-e2e:
 	export KIND_PATH=$(KIND) && \
 	export KUBECTL_PATH=$(KUBECTL) && \
 	export KIND_CLUSTER=$(KIND_CLUSTER) && \
-	LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '. [0].IPAM.Config[0].Subnet' | tr -d '"') && \
+	LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '.[].Containers[].IPv4Address' | tr -d '"') && \
 	export KIND_NODE_IP=$$(echo $${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $$1,$$2,$$3,240}' OFS='.') && \
 	$(KIND) export kubeconfig --name=$(KIND_CLUSTER) && \
 	$(MAKE) test-e2e
@@ -272,7 +275,7 @@ kind/logs-aergia-controller:
 
 .PHONY: install-metallb
 install-metallb:
-	LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '. [0].IPAM.Config[0].Subnet' | tr -d '"') && \
+	LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '.[].Containers[].IPv4Address' | tr -d '"') && \
 	export LAGOON_KIND_NETWORK_RANGE=$$(echo $${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $$1,$$2,$$3,240}' OFS='.')/29 && \
 	$(HELM) upgrade \
 		--install \
