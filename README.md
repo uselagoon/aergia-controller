@@ -17,21 +17,21 @@ This backend is designed to serve generic error handling for any http error. The
 An environment can be force idled, force scaled, or unidled using labels on the namespace. All actions still respect the label selectors, but forced actions will bypass any hits checks
 
 ### Force Idled
-To force idle a namespace, you can label the namespace using `idling.amazee.io/force-idled=true`. This will cause the environment to be immediately scaled down, but the next request to the ingress in the namespace will unidle the namespace
+To force idle a namespace, you can label the namespace using `idling.lagoon.sh/force-idled=true`. This will cause the environment to be immediately scaled down, but the next request to the ingress in the namespace will unidle the namespace
 
 ### Force Scaled
-To force scale a namespace, you can label the namespace using `idling.amazee.io/force-scaled=true`. This will cause the environment to be immediately scaled down, but the next request to the ingress in the namespace will *NOT* unidle the namespace. A a deployment will be required to unidle this namespace
+To force scale a namespace, you can label the namespace using `idling.lagoon.sh/force-scaled=true`. This will cause the environment to be immediately scaled down, but the next request to the ingress in the namespace will *NOT* unidle the namespace. A a deployment will be required to unidle this namespace
 
 ### Unidle
-To unidle a namespace, you can label the namespace using `idling.amazee.io/unidle=true`. This will cause the environment to be scaled back up to its previous state.
+To unidle a namespace, you can label the namespace using `idling.lagoon.sh/unidle=true`. This will cause the environment to be scaled back up to its previous state.
 
 ### Idled
-A label `idling.amazee.io/idled` is set that will be true or false depending on if the environment is idled. This ideally should not be modified as Aergia will update it as required.
+A label `idling.lagoon.sh/idled` is set that will be true or false depending on if the environment is idled. This ideally should not be modified as Aergia will update it as required.
 
 ### Namespace Idling Overrides
 If you want to change a namespaces interval check times outside of the globally applied intervals, the following annotations can be added to the namespace
-* `idling.amazee.io/prometheus-interval` - set this to the time interval for prometheus checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
-* `idling.amazee.io/pod-interval` - set this to the time interval for pod uptime checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
+* `idling.lagoon.sh/prometheus-interval` - set this to the time interval for prometheus checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
+* `idling.lagoon.sh/pod-interval` - set this to the time interval for pod uptime checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
 
 ### IP Allow/Block Lists
 It is possible to add global IP allow and block lists, the helm chart will have support for handling this creation
@@ -39,8 +39,8 @@ It is possible to add global IP allow and block lists, the helm chart will have 
 * blocking IP addresses via `/lists/blockedips` file which is a single line per entry of ip address to block
 
 There are also annotations that can be added to the namespace, or individual `Kind: Ingress` objects that allow for ip allow or blocking.
-* `idling.amazee.io/ip-allow-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
-* `idling.amazee.io/ip-block-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
+* `idling.lagoon.sh/ip-allow-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
+* `idling.lagoon.sh/ip-block-list` - a comma separated list of ip addresses to allow, will be checked against x-forward-for, but if true-client-ip is provided it will prefer this.
 
 ### UserAgent Allow/Block Lists
 It is possible to add global UserAgent allow and block lists, the helm chart will have support for handling this creation
@@ -48,8 +48,8 @@ It is possible to add global UserAgent allow and block lists, the helm chart wil
 * blocking user agents via a `/lists/blockedagents` file which is a single line per entry of useragents or regex patterns to match against. These must be `go` based regular expressions.
 
 There are also annotations that can be added to the namespace, or individual `Kind: Ingress` objects that allow for user agent allow or blocking.
-* `idling.amazee.io/allowed-agents` - a comma separated list of user agents or regex patterns to allow.
-* `idling.amazee.io/blocked-agents` - a comma separated list of user agents or regex patterns to block.
+* `idling.lagoon.sh/allowed-agents` - a comma separated list of user agents or regex patterns to allow.
+* `idling.lagoon.sh/blocked-agents` - a comma separated list of user agents or regex patterns to block.
 
 ### Verify Unidling Requests
 It is possible to start Aergia in a mode where it will require unidling requests to be verified. The way this works is by using HMAC and passing the signed version of the requested namespace back to the user when the initial request to unidle the environment is received. When a client loads this page, it will execute a javascript query back to the requested ingress which is then verified by Aergia. If verification suceeds, it proceeds to unidle the environment. This functionality can be useful to prevent bots and other systems that don't have the ability to execute javascript from unidling environments uncessarily. The signed namespace value will only work for the requested namespace.
@@ -59,7 +59,7 @@ To enable this functionality, set the following:
 - `--verify-secret=use-your-own-secret` or envvar `VERIFY_SECRET=use-your-own-secret`
 
 If the verification feature is enabled, and you need to unidle environments using tools that can't execute javascript, then it is possible to allow a namespace to override the feature by adding the following annotation to the namespace. Using the other allow/blocking mechanisms can then be used to restrict how the environment can unidle if required.
-* `idling.amazee.io/disable-request-verification=true` - set this to disable the hmac verification on a namespace if Aergia has unidling request verification turned on. This annotation is also supported on an ingress too, so that specific ingress can skip the verification requests.
+* `idling.lagoon.sh/disable-request-verification=true` - set this to disable the hmac verification on a namespace if Aergia has unidling request verification turned on. This annotation is also supported on an ingress too, so that specific ingress can skip the verification requests.
 
 If you're using custom template overrides and enable this functionality, you will need to extend your `unidle.html` template with the additional changes to allow it to to perform the call back function or else environments will never unidle. See the bundled `unidle.html` file to see how this may differ from your custom templates.
 
@@ -71,7 +71,7 @@ This could be done using a configmap and volume mount to any directory, then upd
 
 # Installation
 
-Install via helm (https://github.com/amazeeio/charts/tree/main/charts/aergia)
+Install via lagoon-remote helm chart.
 
 ## Custom templates
 If installing via helm, you can use this YAML in your values.yaml file and define the templates there.

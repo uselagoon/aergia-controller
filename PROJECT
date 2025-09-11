@@ -1,4 +1,4 @@
-domain: amazee.io
+domain: lagoon.sh
 layout:
 - go.kubebuilder.io/v3
 projectName: aergia-controller
