@@ -13,6 +13,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/uselagoon/aergia-controller/internal/handlers/metrics"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -180,6 +181,40 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 				} else {
 					opLog.Info(fmt.Sprintf("Deployment %s scaled to %d - %s", deploy.Name, newReplicas, namespace.Name))
 				}
+			}
+		}
+	}
+	cronjobs := &batchv1.CronJobList{}
+	if err := h.Client.List(ctx, cronjobs, listOption); err != nil {
+		opLog.Info(fmt.Sprintf("Unable to get any cronjobs - %s", namespace.Name))
+		return
+	}
+	for _, cronjob := range cronjobs.Items {
+		// if the idled annotation is true
+		lv, lok := cronjob.Labels["idling.amazee.io/idled"]
+		if lok && lv == "true" {
+			opLog.Info(fmt.Sprintf("Cronjob %s - %s", cronjob.Name, namespace.Name))
+			mergePatch, _ := json.Marshal(map[string]interface{}{
+				"spec": map[string]interface{}{
+					"suspend": false, // suspend the cronjob
+				},
+				"metadata": map[string]interface{}{
+					"labels": map[string]interface{}{
+						"idling.amazee.io/idled":        "false",
+						"idling.amazee.io/force-idled":  nil,
+						"idling.amazee.io/force-scaled": nil,
+					},
+					"annotations": map[string]interface{}{
+						"idling.amazee.io/idled-at": nil,
+					},
+				},
+			})
+			unsuspendCronjob := cronjob.DeepCopy()
+			if err := h.Client.Patch(ctx, unsuspendCronjob, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+				// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
+				opLog.Info(fmt.Sprintf("Error unsuspending cronjob %s - %s", cronjob.Name, namespace.Name))
+			} else {
+				opLog.Info(fmt.Sprintf("Cronjob %s unsuspended - %s", cronjob.Name, namespace.Name))
 			}
 		}
 	}
