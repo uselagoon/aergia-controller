@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Request) {
@@ -56,6 +58,21 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 		w.WriteHeader(code)
 		ns := r.Header.Get(Namespace)
 		ingressName := r.Header.Get(IngressName)
+		hostname := ""
+		nsParam := r.URL.Query().Get("namespace")
+		if nsParam != "" {
+			opLog.Info(fmt.Sprintf("Namespace Param: %s", nsParam))
+			ns = nsParam
+		}
+		urlParam := r.URL.Query().Get("url")
+		if urlParam != "" {
+			url, err := url.Parse(urlParam)
+			if err != nil {
+				opLog.Info(fmt.Sprintf("URL Param err: %v", err))
+			}
+			opLog.Info(fmt.Sprintf("URL Param: %s", urlParam))
+			hostname = url.Hostname()
+		}
 		// check if the namespace exists so we know this is somewhat legitimate request
 		if ns != "" {
 			namespace := &corev1.Namespace{}
@@ -66,14 +83,34 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 				return
 			}
 			ingress := &networkv1.Ingress{}
-			if err := h.Client.Get(ctx, types.NamespacedName{
-				Namespace: ns,
-				Name:      ingressName,
-			}, ingress); err != nil {
-				opLog.Info(fmt.Sprintf("Unable to get the ingress %s in %s", ingressName, ns))
-				h.genericError(w, r, opLog, format, path, 400)
-				h.setMetrics(r, start)
-				return
+			if ingressName != "" {
+				if err := h.Client.Get(ctx, types.NamespacedName{
+					Namespace: ns,
+					Name:      ingressName,
+				}, ingress); err != nil {
+					opLog.Info(fmt.Sprintf("Unable to get the ingress %s in %s", ingressName, ns))
+					h.genericError(w, r, opLog, format, path, 400)
+					h.setMetrics(r, start)
+					return
+				}
+			} else {
+				listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
+					ctrlClient.InNamespace(ns),
+				})
+				ingresses := &networkv1.IngressList{}
+				if err := h.Client.List(ctx, ingresses, listOption); err != nil {
+					opLog.Info(fmt.Sprintf("Unable to get any ingress - %s", ns))
+					return
+				}
+				for _, ingressss := range ingresses.Items {
+					for _, rule := range ingressss.Spec.Rules {
+						for _, host := range rule.Host {
+							if string(host) == hostname {
+								ingress = ingressss.DeepCopy()
+							}
+						}
+					}
+				}
 			}
 			// if hmac verification is enabled, perform the verification of the request
 			signedNamespace, verfied := h.verifyRequest(r, namespace, ingress)
@@ -129,8 +166,8 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 					CodeHeader:      r.Header.Get(CodeHeader),
 					ContentType:     r.Header.Get(ContentType),
 					OriginalURI:     r.Header.Get(OriginalURI),
-					Namespace:       r.Header.Get(Namespace),
-					IngressName:     r.Header.Get(IngressName),
+					Namespace:       ns,
+					IngressName:     ingress.Name,
 					ServiceName:     r.Header.Get(ServiceName),
 					ServicePort:     r.Header.Get(ServicePort),
 					RequestID:       r.Header.Get(RequestID),
