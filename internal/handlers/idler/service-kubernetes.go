@@ -32,14 +32,13 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 	podIntervalCheck := h.PodCheckInterval
 	prometheusInternalCheck := h.PrometheusCheckInterval
 	// allow namespace interval overides
-	if podinterval, ok := namespace.Annotations["idling.amazee.io/pod-interval"]; ok {
+	if podinterval, ok := namespace.Annotations["idling.lagoon.sh/pod-interval"]; ok {
 		t, err := time.ParseDuration(podinterval)
 		if err == nil {
 			podIntervalCheck = t
 		}
-
 	}
-	if promethusinterval, ok := namespace.Annotations["idling.amazee.io/prometheus-interval"]; ok {
+	if promethusinterval, ok := namespace.Annotations["idling.lagoon.sh/prometheus-interval"]; ok {
 		t, err := time.ParseDuration(promethusinterval)
 		if err == nil {
 			prometheusInternalCheck = t
@@ -181,28 +180,53 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 				idleReplicas = deployment.Spec.Replicas
 			}
 			scaleDeployment := deployment.DeepCopy()
-			labels := map[string]string{
+			labels := map[string]interface{}{
 				// add the watch label so that the unidler knows to look at it
-				"idling.amazee.io/watch": "true",
-				"idling.amazee.io/idled": "true",
+				"idling.lagoon.sh/watch": "true",
+				"idling.lagoon.sh/idled": "true",
+			}
+			annotations := map[string]interface{}{
+				// add these annotations so user knows to look at them
+				"idling.lagoon.sh/idled-at":        time.Now().Format(time.RFC3339),
+				"idling.lagoon.sh/unidle-replicas": strconv.FormatInt(int64(*idleReplicas), 10),
+			}
+			if _, ok := scaleDeployment.Labels["idling.amazee.io/watch"]; ok {
+				// remove old amazee.io label
+				labels["idling.amazee.io/watch"] = nil
+			}
+			if _, ok := scaleDeployment.Labels["idling.amazee.io/idled"]; ok {
+				// remove old amazee.io label
+				labels["idling.amazee.io/idled"] = nil
+			}
+			if _, ok := scaleDeployment.Annotations["idling.amazee.io/idled-at"]; ok {
+				// remove old amazee.io annotation
+				annotations["idling.amazee.io/idled-at"] = nil
+			}
+			if _, ok := scaleDeployment.Annotations["idling.amazee.io/unidle-replicas"]; ok {
+				// remove old amazee.io annotation
+				annotations["idling.amazee.io/unidle-replicas"] = nil
 			}
 			if forceIdle {
-				labels["idling.amazee.io/force-idled"] = "true"
+				labels["idling.lagoon.sh/force-idled"] = "true"
+				if _, ok := scaleDeployment.Labels["idling.amazee.io/force-idled"]; ok {
+					// remove old amazee.io label
+					labels["idling.amazee.io/force-idled"] = nil
+				}
 			}
 			if forceScale {
-				labels["idling.amazee.io/force-scaled"] = "true"
+				labels["idling.lagoon.sh/force-scaled"] = "true"
+				if _, ok := scaleDeployment.Labels["idling.amazee.io/force-scaled"]; ok {
+					// remove old amazee.io label
+					labels["idling.amazee.io/force-scaled"] = nil
+				}
 			}
 			mergePatch, _ := json.Marshal(map[string]interface{}{
 				"spec": map[string]interface{}{
 					"replicas": 0,
 				},
 				"metadata": map[string]interface{}{
-					"labels": labels,
-					"annotations": map[string]string{
-						// add these annotations so user knows to look at them
-						"idling.amazee.io/idled-at":        time.Now().Format(time.RFC3339),
-						"idling.amazee.io/unidle-replicas": strconv.FormatInt(int64(*idleReplicas), 10),
-					},
+					"labels":      labels,
+					"annotations": annotations,
 				},
 			})
 			if err := h.Client.Patch(ctx, scaleDeployment, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
@@ -243,8 +267,8 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 				ingressCopy := ingress.DeepCopy()
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
-						"labels": map[string]string{
-							"idling.amazee.io/idled": "true",
+						"labels": map[string]interface{}{
+							"idling.lagoon.sh/idled": "true",
 						},
 						"annotations": map[string]string{
 							// add the custom-http-errors annotation so that the unidler knows to handle this ingress
@@ -268,8 +292,8 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 			namespaceCopy := namespace.DeepCopy()
 			mergePatch, _ := json.Marshal(map[string]interface{}{
 				"metadata": map[string]interface{}{
-					"labels": map[string]string{
-						"idling.amazee.io/idled": "true",
+					"labels": map[string]interface{}{
+						"idling.lagoon.sh/idled": "true",
 					},
 				},
 			})

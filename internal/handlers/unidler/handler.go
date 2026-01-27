@@ -178,14 +178,14 @@ func (h *Unidler) genericError(w http.ResponseWriter, r *http.Request, opLog log
 // handle verifying the namespace name is signed by our secret
 func (h *Unidler) verifyRequest(r *http.Request, ns *corev1.Namespace, ingress *networkv1.Ingress) (string, bool) {
 	if h.VerifiedUnidling {
-		if val, ok := ingress.Annotations["idling.amazee.io/disable-request-verification"]; ok {
+		if val, ok := ingress.Annotations["idling.lagoon.sh/disable-request-verification"]; ok {
 			t, _ := strconv.ParseBool(val)
 			if t {
 				return "", true
 			}
 			// otherwise fall through to namespace check
 		}
-		if val, ok := ns.Annotations["idling.amazee.io/disable-request-verification"]; ok {
+		if val, ok := ns.Annotations["idling.lagoon.sh/disable-request-verification"]; ok {
 			t, _ := strconv.ParseBool(val)
 			if t {
 				return "", true

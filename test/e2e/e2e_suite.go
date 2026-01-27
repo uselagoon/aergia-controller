@@ -212,7 +212,7 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			cmd = exec.Command(
 				utils.Kubectl(), "patch", "namespace", "example-nginx",
 				"--type", "merge",
-				"-p", "{\"metadata\":{\"labels\":{\"idling.amazee.io/force-idled\":\"true\"}}}",
+				"-p", "{\"metadata\":{\"labels\":{\"idling.lagoon.sh/force-idled\":\"true\"}}}",
 			)
 			_, err = utils.Run(cmd)
 			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
@@ -263,7 +263,7 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			cmd = exec.Command(
 				utils.Kubectl(), "patch", "namespace", "example-nginx",
 				"--type", "merge",
-				"-p", "{\"metadata\":{\"labels\":{\"idling.amazee.io/force-idled\":\"true\"}}}",
+				"-p", "{\"metadata\":{\"labels\":{\"idling.lagoon.sh/force-idled\":\"true\"}}}",
 			)
 			_, err = utils.Run(cmd)
 			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
@@ -275,7 +275,7 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			cmd = exec.Command(
 				utils.Kubectl(), "patch", "namespace", "example-nginx",
 				"--type", "merge",
-				"-p", "{\"metadata\":{\"labels\":{\"idling.amazee.io/unidle\":\"true\"}}}",
+				"-p", "{\"metadata\":{\"labels\":{\"idling.lagoon.sh/unidle\":\"true\"}}}",
 			)
 			_, err = utils.Run(cmd)
 			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
