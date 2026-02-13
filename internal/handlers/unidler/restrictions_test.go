@@ -165,7 +165,7 @@ func TestUnidler_checkAccess(t *testing.T) {
 			name: "test3 - blocked agent annotation",
 			args: args{
 				annotations: map[string]string{
-					"idling.amazee.io/blocked-agents": "@(example).test.?$,@(internal).test.?$",
+					"idling.lagoon.sh/blocked-agents": "@(example).test.?$,@(internal).test.?$",
 				},
 				userAgent:     "This is a bot, complaints to: complain@example.test.",
 				trueClientIP:  "1.2.3.4",
@@ -199,7 +199,7 @@ func TestUnidler_checkAccess(t *testing.T) {
 			name: "test5 - blocked ip annotation",
 			args: args{
 				annotations: map[string]string{
-					"idling.amazee.io/ip-block-list": "1.2.3.4",
+					"idling.lagoon.sh/ip-block-list": "1.2.3.4",
 				},
 				userAgent:     "This is a bot, complaints to: complain@example.test.",
 				trueClientIP:  "1.2.3.4",
@@ -233,7 +233,7 @@ func TestUnidler_checkAccess(t *testing.T) {
 			name: "test7 - allowed ip annotation",
 			args: args{
 				annotations: map[string]string{
-					"idling.amazee.io/ip-allow-list": "1.2.3.4",
+					"idling.lagoon.sh/ip-allow-list": "1.2.3.4",
 				},
 				userAgent:     "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36",
 				trueClientIP:  "1.2.3.4",
@@ -269,7 +269,7 @@ func TestUnidler_checkAccess(t *testing.T) {
 			name: "test9 - allowed agent annotation",
 			args: args{
 				annotations: map[string]string{
-					"idling.amazee.io/allowed-agents": "@(example).test.?$,@(internal).test.?$",
+					"idling.lagoon.sh/allowed-agents": "@(example).test.?$,@(internal).test.?$",
 				},
 				userAgent:     "This is not a bot, don't complaint to: complain@example.test.",
 				trueClientIP:  "1.2.3.4",
@@ -308,8 +308,8 @@ func TestUnidler_checkAccess(t *testing.T) {
 			name: "test11 - allowed agent blocked ip annotation",
 			args: args{
 				annotations: map[string]string{
-					"idling.amazee.io/allowed-agents": "@(example).test.?$,@(internal).test.?$",
-					"idling.amazee.io/ip-block-list":  "1.2.3.4",
+					"idling.lagoon.sh/allowed-agents": "@(example).test.?$,@(internal).test.?$",
+					"idling.lagoon.sh/ip-block-list":  "1.2.3.4",
 				},
 				userAgent:     "This is not a bot, don't complaint to: complain@example.test.",
 				trueClientIP:  "1.2.3.4",
@@ -348,8 +348,8 @@ func TestUnidler_checkAccess(t *testing.T) {
 			name: "test13 - allowed ip blocked agent annotation",
 			args: args{
 				annotations: map[string]string{
-					"idling.amazee.io/blocked-agents": "@(example).test.?$,@(internal).test.?$",
-					"idling.amazee.io/ip-allow-list":  "1.2.3.4",
+					"idling.lagoon.sh/blocked-agents": "@(example).test.?$,@(internal).test.?$",
+					"idling.lagoon.sh/ip-allow-list":  "1.2.3.4",
 				},
 				userAgent:     "This is not a bot, don't complaint to: complain@example.test.",
 				trueClientIP:  "1.2.3.4",
@@ -367,8 +367,8 @@ func TestUnidler_checkAccess(t *testing.T) {
 			name: "test15 - allowed ip blocked agent namespace annotation",
 			args: args{
 				nsannotations: map[string]string{
-					"idling.amazee.io/blocked-agents": "@(example).test.?$,@(internal).test.?$",
-					"idling.amazee.io/ip-allow-list":  "1.2.3.4",
+					"idling.lagoon.sh/blocked-agents": "@(example).test.?$,@(internal).test.?$",
+					"idling.lagoon.sh/ip-allow-list":  "1.2.3.4",
 				},
 				userAgent:     "This is not a bot, don't complaint to: complain@example.test.",
 				trueClientIP:  "1.2.3.4",
