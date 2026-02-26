@@ -15,6 +15,8 @@ import (
 	"github.com/uselagoon/aergia-controller/internal/handlers/metrics"
 	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -57,8 +59,36 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 		}
 		w.WriteHeader(code)
 		ns := r.Header.Get(Namespace)
+		originalURI := r.Header.Get(OriginalURI)
+		serviceName := r.Header.Get(ServiceName)
 		ingressName := r.Header.Get(IngressName)
 		hostname := ""
+
+		// haproxy requests will set query param `unidle=true`
+		unidleReq := r.URL.Query().Get("unidle")
+		if unidleReq != "" {
+			opLog.Info(fmt.Sprintf("UnidleReq Param: %s", unidleReq))
+			// and haproxy requests include the `Referer` header for which url was requested by the client
+			urlParam := r.Header.Get(Referer)
+			if urlParam != "" {
+				// if unidle and referrer are set
+				opLog.Info(fmt.Sprintf("Referer: %s", urlParam))
+				url, err := url.Parse(urlParam)
+				if err != nil {
+					opLog.Info(fmt.Sprintf("URL err: %v", err))
+				}
+				originalURI = urlParam
+				hostname = url.Hostname()
+				// look for an idled ingress that matches this hostname
+				i, svcName, err := h.getIngressByHostname(ctx, hostname)
+				if err == nil {
+					ns = i.Namespace
+					serviceName = svcName
+				}
+			}
+		}
+
+		// traefik requests will set the `namespace` and `url` query params
 		nsParam := r.URL.Query().Get("namespace")
 		if nsParam != "" {
 			opLog.Info(fmt.Sprintf("Namespace Param: %s", nsParam))
@@ -165,10 +195,10 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 					FormatHeader:    r.Header.Get(FormatHeader),
 					CodeHeader:      r.Header.Get(CodeHeader),
 					ContentType:     r.Header.Get(ContentType),
-					OriginalURI:     r.Header.Get(OriginalURI),
+					OriginalURI:     originalURI,
 					Namespace:       ns,
 					IngressName:     ingress.Name,
-					ServiceName:     r.Header.Get(ServiceName),
+					ServiceName:     serviceName,
 					ServicePort:     r.Header.Get(ServicePort),
 					RequestID:       r.Header.Get(RequestID),
 					RefreshInterval: h.RefreshInterval,
@@ -246,4 +276,26 @@ func (h *Unidler) setMetrics(r *http.Request, start time.Time) {
 
 	metrics.RequestCount.WithLabelValues(proto).Inc()
 	metrics.RequestDuration.WithLabelValues(proto).Observe(duration)
+}
+
+func (h *Unidler) getIngressByHostname(ctx context.Context, targetHost string) (*networkv1.Ingress, string, error) {
+	ingressList := &networkv1.IngressList{}
+	labelRequirements, _ := labels.NewRequirement("idling.amazee.io/idled", selection.Equals, []string{"true"})
+	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
+		ctrlClient.MatchingLabelsSelector{
+			Selector: labels.NewSelector().Add(*labelRequirements),
+		},
+	})
+	err := h.Client.List(ctx, ingressList, listOption)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, ingress := range ingressList.Items {
+		for _, rule := range ingress.Spec.Rules {
+			if rule.Host == targetHost {
+				return &ingress, rule.HTTP.Paths[0].Backend.Service.Name, nil
+			}
+		}
+	}
+	return nil, "", fmt.Errorf("ingress with host %s not found", targetHost)
 }
