@@ -231,7 +231,7 @@ func (h *Unidler) verifyRequest(r *http.Request, ns *corev1.Namespace, ingress *
 		}
 		// if hmac verification is enabled, perform the verification of the request
 		signedNamespace := hmacSigner(ns.Name, []byte(h.VerifiedSecret))
-		verifier := r.URL.Query().Get("verifier")
+		verifier := r.Header.Get(AergiaVerifier)
 		metrics.VerificationRequests.Inc()
 		return signedNamespace, hmacVerifier(ns.Name, verifier, []byte(h.VerifiedSecret))
 	}
