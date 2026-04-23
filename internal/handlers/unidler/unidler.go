@@ -87,6 +87,8 @@ const (
 	AergiaHeader = "X-Aergia"
 	// CacheControl name of the header that defines the cache control config
 	CacheControl = "Cache-Control"
+	// Referrer name of the header that defines the referrer
+	Referer = "Referer"
 	// ErrFilesPathVar is the name of the environment variable indicating
 	// the location on disk of files served by the handler.
 	ErrFilesPathVar = "ERROR_FILES_PATH"

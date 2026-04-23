@@ -124,6 +124,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				// get the number of requests to any ingress in the exported namespace by status code
+				// @TODO: traefik_service_requests_total{exported_service="test-develop-nginx-http@kubernetes"}
 				promQuery := fmt.Sprintf(
 					`round(sum(increase(nginx_ingress_controller_requests{exported_namespace="%s",status=~"2[0-9x]{2}"}[%s])) by (status))`,
 					namespace.Name,
@@ -241,14 +242,24 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 		for _, ingress := range ingressList.Items {
 			if !h.DryRun {
 				ingressCopy := ingress.DeepCopy()
+				var ingressCodes, traefikMiddlewares *string
+				ingressValue, ok := ingress.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]
+				if ok {
+					ingressCodes = addStatusCode(ingressValue, "503")
+				}
+				traefikValue, ok := ingress.Annotations["traefik.ingress.kubernetes.io/router.middlewares"]
+				if ok {
+					traefikMiddlewares = addStatusCode(traefikValue, fmt.Sprintf("%s-aergia@kubernetescrd", ingress.Namespace))
+				}
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
 						"labels": map[string]string{
 							"idling.amazee.io/idled": "true",
 						},
-						"annotations": map[string]string{
+						"annotations": map[string]interface{}{
 							// add the custom-http-errors annotation so that the unidler knows to handle this ingress
-							"nginx.ingress.kubernetes.io/custom-http-errors": "503",
+							"nginx.ingress.kubernetes.io/custom-http-errors":   ingressCodes,
+							"traefik.ingress.kubernetes.io/router.middlewares": traefikMiddlewares,
 						},
 					},
 				})
