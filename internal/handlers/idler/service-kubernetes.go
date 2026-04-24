@@ -242,15 +242,14 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 		for _, ingress := range ingressList.Items {
 			if !h.DryRun {
 				ingressCopy := ingress.DeepCopy()
-				var ingressCodes, traefikMiddlewares *string
-				ingressValue, ok := ingress.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]
-				if ok {
-					ingressCodes = addStatusCode(ingressValue, "503")
-				}
-				traefikValue, ok := ingress.Annotations["traefik.ingress.kubernetes.io/router.middlewares"]
-				if ok {
-					traefikMiddlewares = addStatusCode(traefikValue, fmt.Sprintf("%s-aergia@kubernetescrd", ingress.Namespace))
-				}
+				ingressValue := ingress.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]
+				traefikValue := ingress.Annotations["traefik.ingress.kubernetes.io/router.middlewares"]
+
+				ingressCodes := addStatusCode(ingressValue, "503")
+				traefikMiddlewares := addStatusCode(
+					traefikValue,
+					fmt.Sprintf("%s-aergia@kubernetescrd", ingress.Namespace),
+				)
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
 						"labels": map[string]string{
