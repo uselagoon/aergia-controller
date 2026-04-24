@@ -104,8 +104,13 @@
         const host = window.location.origin;
         document.addEventListener('DOMContentLoaded', () => {
             fetch(
-              host + '?verifier={{ .Verifier }}',
-              { method: 'GET' }
+                host,
+                {
+                    method: 'GET',
+                    headers: {
+                        "X-Aergia-Verifier": "{{ .Verifier }}",
+                    },
+                }
             );
         });
     </script>

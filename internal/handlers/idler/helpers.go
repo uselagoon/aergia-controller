@@ -1,6 +1,8 @@
 package idler
 
 import (
+	"strings"
+
 	"k8s.io/apimachinery/pkg/labels"
 )
 
@@ -16,4 +18,18 @@ func generateLabelRequirements(selectors []idlerSelector) []labels.Requirement {
 		labelRequirements = append(labelRequirements, *selector)
 	}
 	return labelRequirements
+}
+
+func addStatusCode(codes string, code string) *string {
+	if codes == "" {
+		return &code
+	}
+	parts := strings.Split(codes, ",")
+	for _, c := range parts {
+		if c == code {
+			return &codes
+		}
+	}
+	newCodes := codes + "," + code
+	return &newCodes
 }

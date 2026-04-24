@@ -85,6 +85,8 @@ const (
 	RequestID = "X-Request-ID"
 	// AergiaHeader name of the header that contains if this has been served by aergia
 	AergiaHeader = "X-Aergia"
+	// AergiaVerifier name of the header that contains the verification code required to unidle
+	AergiaVerifier = "X-Aergia-Verifier"
 	// CacheControl name of the header that defines the cache control config
 	CacheControl = "Cache-Control"
 	// ErrFilesPathVar is the name of the environment variable indicating
