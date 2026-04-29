@@ -35,13 +35,15 @@ const (
 
 func init() {
 	kindIP = os.Getenv("KIND_NODE_IP")
+	ingressController = os.Getenv("INGRESS_CONTROLLER")
 }
 
 var (
 	duration = 600 * time.Second
 	interval = 1 * time.Second
 
-	kindIP string
+	kindIP            string
+	ingressController string
 
 	metricLabels = []string{
 		"aergia_allowed_requests",
@@ -62,12 +64,23 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 		cmd := exec.Command(utils.Kubectl(), "create", "ns", namespace)
 		_, _ = utils.Run(cmd)
 
-		ginkgo.By("remove ingress-nginx custom backend")
-		cmd = exec.Command(utils.Kubectl(), "-n", "ingress-nginx", "patch", "deployment",
-			"ingress-nginx-controller", "--type=json",
-			"-p=[{'op': 'remove', 'path': '/spec/template/spec/containers/0/args/10'}]",
-		)
-		_, _ = utils.Run(cmd)
+		if ingressController == "traefik" {
+
+			ginkgo.By("install ingress-traefik default backend")
+			cmd = exec.Command(utils.Kubectl(), "-n", "aergia-controller-system",
+				"apply",
+				"-f",
+				"test-resources/traefik-default-backend.yaml",
+			)
+			_, _ = utils.Run(cmd)
+		} else {
+			ginkgo.By("remove ingress-nginx custom backend")
+			cmd = exec.Command(utils.Kubectl(), "-n", "ingress-nginx", "patch", "deployment",
+				"ingress-nginx-controller", "--type=json",
+				"-p=[{'op': 'remove', 'path': '/spec/template/spec/containers/0/args/10'}]",
+			)
+			_, _ = utils.Run(cmd)
+		}
 
 		// when running a re-test, it is best to make sure the old namespace doesn't exist
 		ginkgo.By("removing existing test resources")
@@ -79,18 +92,19 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 
 	// comment to prevent cleaning up controller namespace and local services
 	ginkgo.AfterAll(func() {
-		ginkgo.By("remove ingress-nginx custom backend")
-		cmd := exec.Command(utils.Kubectl(), "-n", "ingress-nginx", "patch", "deployment",
-			"ingress-nginx-controller", "--type=json",
-			"-p=[{'op': 'remove', 'path': '/spec/template/spec/containers/0/args/10'}]",
-		)
-		_, _ = utils.Run(cmd)
-
+		if ingressController != "traefik" {
+			ginkgo.By("remove ingress-nginx custom backend")
+			cmd := exec.Command(utils.Kubectl(), "-n", "ingress-nginx", "patch", "deployment",
+				"ingress-nginx-controller", "--type=json",
+				"-p=[{'op': 'remove', 'path': '/spec/template/spec/containers/0/args/10'}]",
+			)
+			_, _ = utils.Run(cmd)
+		}
 		ginkgo.By("stop metrics consumer")
 		utils.StopMetricsConsumer()
 
 		// remove the example namespace
-		cmd = exec.Command(utils.Kubectl(), "delete", "ns", "example-nginx")
+		cmd := exec.Command(utils.Kubectl(), "delete", "ns", "example-nginx")
 		_, _ = utils.Run(cmd)
 
 		ginkgo.By("removing manager namespace")
@@ -156,13 +170,15 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			}
 			gomega.EventuallyWithOffset(1, verifyControllerUp, time.Minute, time.Second).Should(gomega.Succeed())
 
-			ginkgo.By("patch ingress-nginx custom backend")
-			cmd = exec.Command(utils.Kubectl(), "-n", "ingress-nginx", "patch", "deployment",
-				"ingress-nginx-controller", "--type=json",
-				"-p=[{'op': 'add', 'path': '/spec/template/spec/containers/0/args/-', 'value': '--default-backend-service=aergia-controller-system/aergia-controller-controller-manager-backend' }]",
-			)
-			_, err = utils.Run(cmd)
-			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			if ingressController != "traefik" {
+				ginkgo.By("patch ingress-nginx custom backend")
+				cmd = exec.Command(utils.Kubectl(), "-n", "ingress-nginx", "patch", "deployment",
+					"ingress-nginx-controller", "--type=json",
+					"-p=[{'op': 'add', 'path': '/spec/template/spec/containers/0/args/-', 'value': '--default-backend-service=aergia-controller-system/aergia-controller-controller-manager-backend' }]",
+				)
+				_, err = utils.Run(cmd)
+				gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			}
 
 			time.Sleep(5 * time.Second)
 
