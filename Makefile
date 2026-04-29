@@ -11,6 +11,7 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 INGRESS_VERSION=4.9.1
+TRAEFIK_VERSION=37.3.0
 
 KIND_CLUSTER ?= aergia-controller
 KIND_NETWORK ?= aergia-controller
@@ -30,6 +31,15 @@ KIND = $(realpath ./local-dev/kind)
 KUSTOMIZE = $(realpath ./local-dev/kustomize)
 
 ARCH := $(shell uname | tr '[:upper:]' '[:lower:]')
+
+INGRESS_CONTROLLER = traefik
+ifeq ($(INGRESS_CONTROLLER),traefik)
+INGRESS_CONTROLLER_NAMESPACE = ingress-traefik
+INGRESS_CONTROLLER_SERVICE = ingress-traefik
+else
+INGRESS_CONTROLLER_NAMESPACE = ingress-nginx
+INGRESS_CONTROLLER_SERVICE = ingress-nginx-controller
+endif
 
 .PHONY: local-dev/kind
 local-dev/kind:
@@ -120,6 +130,7 @@ local-dev/tools: local-dev/kind local-dev/kustomize local-dev/kubectl local-dev/
 helm/repos: local-dev/helm
 	# install repo dependencies required by the charts
 	$(HELM) repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+	$(HELM) repo add traefik https://traefik.github.io/charts
 	$(HELM) repo add metallb https://metallb.github.io/metallb
 	$(HELM) repo update
 
@@ -158,7 +169,7 @@ uninstall: manifests
 .PHONY: preview
 preview: manifests
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	@export HARBOR_URL="https://registry.$$($(KUBECTL) -n ingress-nginx get services ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || echo 127.0.0.1).nip.io" && \
+	@export HARBOR_URL="https://registry.$$($(KUBECTL) -n $(INGRESS_CONTROLLER_NAMESPACE) get services $(INGRESS_CONTROLLER_SERVICE) -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || echo 127.0.0.1).nip.io" && \
 	$(KUSTOMIZE) build config/default
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
@@ -168,7 +179,7 @@ deploy: manifests
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	@if $(KIND) get clusters | grep -q $(KIND_CLUSTER); then \
 		$(KIND) export kubeconfig --name=$(KIND_CLUSTER) \
-		&& export HARBOR_URL="https://registry.$$($(KUBECTL) -n ingress-nginx get services ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}').nip.io"; \
+		&& export HARBOR_URL="https://registry.$$($(KUBECTL) -n $(INGRESS_CONTROLLER_NAMESPACE) get services $(INGRESS_CONTROLLER_SERVICE) -o jsonpath='{.status.loadBalancer.ingress[0].ip}').nip.io"; \
 	fi && \
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
@@ -230,9 +241,15 @@ create-kind-cluster: local-dev/tools helm/repos
 	docker network inspect $(KIND_NETWORK) >/dev/null || docker network create $(KIND_NETWORK) \
 		&& export KIND_EXPERIMENTAL_DOCKER_NETWORK=$(KIND_NETWORK) \
  		&& $(KIND) create cluster --wait=60s --name=$(KIND_CLUSTER) --config=test-resources/test-suite.kind-config.yaml
+ifeq ($(INGRESS_CONTROLLER),traefik)
+	LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '.[].Containers[].IPv4Address' | tr -d '"') \
+		&& export KIND_NODE_IP=$$(echo $${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $$1,$$2,$$3,240}' OFS='.') \
+ 		&& envsubst < test/e2e/testdata/example-traefik.yaml.tpl > test/e2e/testdata/example-nginx.yaml
+else
 	LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '.[].Containers[].IPv4Address' | tr -d '"') \
 		&& export KIND_NODE_IP=$$(echo $${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $$1,$$2,$$3,240}' OFS='.') \
  		&& envsubst < test/e2e/testdata/example-nginx.yaml.tpl > test/e2e/testdata/example-nginx.yaml
+endif
 
 # Create a kind cluster locally and run the test e2e test suite against it
 .PHONY: kind/test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up locally
@@ -245,6 +262,7 @@ kind/re-test-e2e:
 	export KIND_CLUSTER=$(KIND_CLUSTER) && \
 	LAGOON_KIND_CIDR_BLOCK=$$(docker network inspect $(KIND_NETWORK) | $(JQ) '.[].Containers[].IPv4Address' | tr -d '"') && \
 	export KIND_NODE_IP=$$(echo $${LAGOON_KIND_CIDR_BLOCK%???} | awk -F'.' '{print $$1,$$2,$$3,240}' OFS='.') && \
+	export INGRESS_CONTROLLER=$(INGRESS_CONTROLLER) && \
 	$(KIND) export kubeconfig --name=$(KIND_CLUSTER) && \
 	$(MAKE) test-e2e
 
@@ -292,6 +310,22 @@ install-metallb:
 # installs ingress-nginx
 .PHONY: install-ingress
 install-ingress: install-metallb
+ifeq ($(INGRESS_CONTROLLER),traefik)
+	$(HELM) upgrade \
+		--install \
+		--create-namespace \
+		--namespace ingress-traefik \
+		--wait \
+		--timeout $(TIMEOUT) \
+		--set ingressClass.isDefaultClass=true \
+		--set ingressClass.name=traefik \
+		--set "additionalArguments[0]=--providers.kubernetescrd.allowcrossnamespace=true" \
+		--version=$(TRAEFIK_VERSION) \
+		ingress-traefik \
+		traefik/traefik
+	$(KUBECTL) create -f test-resources/traefik-role-for-admin.yaml || true
+	$(KUBECTL) --namespace aergia-controller-system create -f test-resources/traefik-default-backend.yaml || true
+else
 	$(HELM) upgrade \
 		--install \
 		--create-namespace \
@@ -309,6 +343,7 @@ install-ingress: install-metallb
 		--version=$(INGRESS_VERSION) \
 		ingress-nginx \
 		ingress-nginx/ingress-nginx
+endif
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary (ideally with version)
