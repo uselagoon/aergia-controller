@@ -18,6 +18,10 @@ jobs:
           "v1.30.10@sha256:4de75d0e82481ea846c0ed1de86328d821c1e6a6a91ac37bf804e5313670e507",
           "v1.32.2@sha256:f226345927d7e348497136874b6d207e0b32cc52154ad8323129352923a3142f",
         ]
+        ingress: [
+          "traefik",
+          "nginx"
+        ]
         experimental: [false]
     steps:
     - name: Checkout
@@ -34,6 +38,7 @@ jobs:
     - name: Add dependency chart repos
       run: |
         helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo add traefik https://traefik.github.io/charts
         helm repo add metallb https://metallb.github.io/metallb
 
     - name: Install gojq
@@ -57,7 +62,7 @@ jobs:
         LAGOON_KIND_CIDR_BLOCK=$(docker network inspect kind | jq '.[].Containers[].IPv4Address' | tr -d '"')
         KIND_NODE_IP=$(echo "${LAGOON_KIND_CIDR_BLOCK%???}" | awk -F'.' '{print $1,$2,$3,240}' OFS='.')
         export KIND_NODE_IP
-        envsubst < test/e2e/testdata/example-nginx.yaml.tpl > test/e2e/testdata/example-nginx.yaml
+        envsubst < test/e2e/testdata/example-${{ matrix.ingress }}.yaml.tpl > test/e2e/testdata/example-nginx.yaml
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -74,4 +79,4 @@ jobs:
         LAGOON_KIND_CIDR_BLOCK=$(docker network inspect kind | jq '.[].Containers[].IPv4Address' | tr -d '"')
         KIND_NODE_IP=$(echo "${LAGOON_KIND_CIDR_BLOCK%???}" | awk -F'.' '{print $1,$2,$3,240}' OFS='.')
         export KIND_NODE_IP
-        make github/test-e2e KIND_NETWORK=kind
+        make github/test-e2e KIND_NETWORK=kind INGRESS_CONTROLLER=${{ matrix.ingress }}
