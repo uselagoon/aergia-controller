@@ -137,9 +137,29 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				if len(warnings) > 0 {
 					opLog.Info(fmt.Sprintf("Warnings: %v", warnings))
 				}
+				promQuery2 := fmt.Sprintf(
+					`round(sum(increase(traefik_service_requests_total{exported_service=~"%s-.*",code=~"2[0-9x]{2}"}[%s])) by (code))`,
+					namespace.Name,
+					prometheusInternalCheck,
+				)
+				result2, warnings2, err := v1api.Query(ctx, promQuery2, time.Now())
+				if err != nil {
+					opLog.Error(err, "Error querying Prometheus")
+					return
+				}
+				if len(warnings2) > 0 {
+					opLog.Info(fmt.Sprintf("Warnings: %v", warnings2))
+				}
 				// and then add up the results of all the status requests to determine hit count
 				if result.Type() == prometheusmodel.ValVector {
 					resultVal := result.(prometheusmodel.Vector)
+					for _, elem := range resultVal {
+						hits, _ := strconv.Atoi(elem.Value.String())
+						numHits += hits
+					}
+				}
+				if result2.Type() == prometheusmodel.ValVector {
+					resultVal := result2.(prometheusmodel.Vector)
 					for _, elem := range resultVal {
 						hits, _ := strconv.Atoi(elem.Value.String())
 						numHits += hits
@@ -241,14 +261,23 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 		for _, ingress := range ingressList.Items {
 			if !h.DryRun {
 				ingressCopy := ingress.DeepCopy()
+				ingressValue := ingress.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]
+				traefikValue := ingress.Annotations["traefik.ingress.kubernetes.io/router.middlewares"]
+
+				ingressCodes := addStatusCode(ingressValue, "503")
+				traefikMiddlewares := addStatusCode(
+					traefikValue,
+					fmt.Sprintf("%s-aergia@kubernetescrd", ingress.Namespace),
+				)
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
 						"labels": map[string]string{
 							"idling.amazee.io/idled": "true",
 						},
-						"annotations": map[string]string{
+						"annotations": map[string]interface{}{
 							// add the custom-http-errors annotation so that the unidler knows to handle this ingress
-							"nginx.ingress.kubernetes.io/custom-http-errors": "503",
+							"nginx.ingress.kubernetes.io/custom-http-errors":   ingressCodes,
+							"traefik.ingress.kubernetes.io/router.middlewares": traefikMiddlewares,
 						},
 					},
 				})

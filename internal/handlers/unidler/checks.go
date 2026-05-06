@@ -65,39 +65,54 @@ func (h *Unidler) removeCodeFromIngress(ctx context.Context, ns string, opLog lo
 	})
 	ingresses := &networkv1.IngressList{}
 	if err := h.Client.List(ctx, ingresses, listOption); err != nil {
-		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", ns))
+		opLog.Info(fmt.Sprintf("Unable to get any ingress - %s", ns))
 		return
 	}
 	for _, ingress := range ingresses.Items {
 		// if the nginx.ingress.kubernetes.io/custom-http-errors annotation is set
 		// then strip out the 503 error code that is there so that
 		// users will see their application errors rather than the loading page
-		if value, ok := ingress.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]; ok {
-			newVals := removeStatusCode(value, "503")
+		var ingressCodes, traefikMiddlewares *string
+		patch := false
+		ingressValue, ok := ingress.Annotations["nginx.ingress.kubernetes.io/custom-http-errors"]
+		if ok {
+			ingressCodes = removeStatusCode(ingressValue, "503")
+			patch = true
+		}
+		traefikValue, ok := ingress.Annotations["traefik.ingress.kubernetes.io/router.middlewares"]
+		if ok {
+			traefikMiddlewares = removeStatusCode(traefikValue, fmt.Sprintf("%s-aergia@kubernetescrd", ingress.Namespace))
+			patch = true
+		}
+		if patch {
 			// if the 503 code was removed from the annotation
 			// then patch it
-			if newVals == nil || *newVals != value {
-				mergePatch, _ := json.Marshal(map[string]interface{}{
-					"metadata": map[string]interface{}{
-						"labels": map[string]interface{}{
-							"idling.amazee.io/idled": "false",
-						},
-						"annotations": map[string]interface{}{
-							"nginx.ingress.kubernetes.io/custom-http-errors": newVals,
-							"idling.amazee.io/idled-at":                      nil,
-						},
+			annotations := map[string]interface{}{
+				"idling.amazee.io/idled-at": nil,
+			}
+			if ingressCodes == nil || *ingressCodes != ingressValue {
+				annotations["nginx.ingress.kubernetes.io/custom-http-errors"] = ingressCodes
+			}
+			if traefikMiddlewares == nil || *traefikMiddlewares != traefikValue {
+				annotations["traefik.ingress.kubernetes.io/router.middlewares"] = traefikMiddlewares
+			}
+			mergePatch, _ := json.Marshal(map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"labels": map[string]interface{}{
+						"idling.amazee.io/idled": "false",
 					},
-				})
-				patchIngress := ingress.DeepCopy()
-				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
-					// log it but try and patch the rest of the ingressses anyway (some is better than none?)
-					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s - %s", ingress.Name, ns))
+					"annotations": annotations,
+				},
+			})
+			patchIngress := ingress.DeepCopy()
+			if err := h.Client.Patch(ctx, patchIngress, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+				// log it but try and patch the rest of the ingressses anyway (some is better than none?)
+				opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s - %s", ingress.Name, ns))
+			} else {
+				if ingressCodes == nil {
+					opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation removed - %s", ingress.Name, ns))
 				} else {
-					if newVals == nil {
-						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation removed - %s", ingress.Name, ns))
-					} else {
-						opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation patched with %s - %s", ingress.Name, *newVals, ns))
-					}
+					opLog.Info(fmt.Sprintf("Ingress %s custom-http-errors annotation patched with %s - %s", ingress.Name, *ingressCodes, ns))
 				}
 			}
 		}
