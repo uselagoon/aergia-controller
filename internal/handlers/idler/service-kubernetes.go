@@ -124,7 +124,6 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				defer cancel()
 				// get the number of requests to any ingress in the exported namespace by status code
-				// @TODO: traefik_service_requests_total{exported_service="test-develop-nginx-http@kubernetes"}
 				promQuery := fmt.Sprintf(
 					`round(sum(increase(nginx_ingress_controller_requests{exported_namespace="%s",status=~"2[0-9x]{2}"}[%s])) by (status))`,
 					namespace.Name,
@@ -138,9 +137,29 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				if len(warnings) > 0 {
 					opLog.Info(fmt.Sprintf("Warnings: %v", warnings))
 				}
+				promQuery2 := fmt.Sprintf(
+					`round(sum(increase(traefik_service_requests_total{exported_service=~"%s-.*",code=~"2[0-9x]{2}"}[%s])) by (code))`,
+					namespace.Name,
+					prometheusInternalCheck,
+				)
+				result2, warnings2, err := v1api.Query(ctx, promQuery2, time.Now())
+				if err != nil {
+					opLog.Error(err, "Error querying Prometheus")
+					return
+				}
+				if len(warnings2) > 0 {
+					opLog.Info(fmt.Sprintf("Warnings: %v", warnings2))
+				}
 				// and then add up the results of all the status requests to determine hit count
 				if result.Type() == prometheusmodel.ValVector {
 					resultVal := result.(prometheusmodel.Vector)
+					for _, elem := range resultVal {
+						hits, _ := strconv.Atoi(elem.Value.String())
+						numHits += hits
+					}
+				}
+				if result2.Type() == prometheusmodel.ValVector {
+					resultVal := result2.(prometheusmodel.Vector)
 					for _, elem := range resultVal {
 						hits, _ := strconv.Atoi(elem.Value.String())
 						numHits += hits
