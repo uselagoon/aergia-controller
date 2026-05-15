@@ -13,15 +13,15 @@ import (
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	ctrlClient "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func (h *Unidler) checkForceScaled(ctx context.Context, ns string, opLog logr.Logger) bool {
 	// get the deployments in the namespace if they have the `watch=true` label
-	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/force-scaled", selection.Equals, []string{"true"})
-	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
-		ctrlClient.InNamespace(ns),
-		ctrlClient.MatchingLabelsSelector{
+	labelRequirements1, _ := labels.NewRequirement("idling.lagoon.sh/force-scaled", selection.Equals, []string{"true"})
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+		client.InNamespace(ns),
+		client.MatchingLabelsSelector{
 			Selector: labels.NewSelector().Add(*labelRequirements1),
 		},
 	})
@@ -43,8 +43,8 @@ func (h *Unidler) hasRunningPod(ctx context.Context, namespace, deployment strin
 			return false, err
 		}
 		var pods corev1.PodList
-		listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
-			ctrlClient.MatchingLabelsSelector{
+		listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+			client.MatchingLabelsSelector{
 				Selector: labels.SelectorFromSet(d.Spec.Selector.MatchLabels),
 			},
 		})
@@ -60,8 +60,8 @@ func (h *Unidler) hasRunningPod(ctx context.Context, namespace, deployment strin
 
 func (h *Unidler) removeCodeFromIngress(ctx context.Context, ns string, opLog logr.Logger) {
 	// get the ingresses in the namespace
-	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
-		ctrlClient.InNamespace(ns),
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+		client.InNamespace(ns),
 	})
 	ingresses := &networkv1.IngressList{}
 	if err := h.Client.List(ctx, ingresses, listOption); err != nil {
@@ -80,16 +80,16 @@ func (h *Unidler) removeCodeFromIngress(ctx context.Context, ns string, opLog lo
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{
 						"labels": map[string]interface{}{
-							"idling.amazee.io/idled": "false",
+							"idling.lagoon.sh/idled": "false",
 						},
 						"annotations": map[string]interface{}{
 							"nginx.ingress.kubernetes.io/custom-http-errors": newVals,
-							"idling.amazee.io/idled-at":                      nil,
+							"idling.lagoon.sh/idled-at":                      nil,
 						},
 					},
 				})
 				patchIngress := ingress.DeepCopy()
-				if err := h.Client.Patch(ctx, patchIngress, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+				if err := h.Client.Patch(ctx, patchIngress, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and patch the rest of the ingressses anyway (some is better than none?)
 					opLog.Info(fmt.Sprintf("Error patching custom-http-errors on ingress %s - %s", ingress.Name, ns))
 				} else {
