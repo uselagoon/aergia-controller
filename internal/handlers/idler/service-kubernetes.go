@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -265,9 +266,12 @@ func (h *Idler) patchIngress(ctx context.Context, opLog logr.Logger, namespace c
 				traefikValue := ingress.Annotations["traefik.ingress.kubernetes.io/router.middlewares"]
 
 				ingressCodes := addStatusCode(ingressValue, "503")
+
+				// traefik needs a normalized namespace
+				normalizedNamespace := regexp.MustCompile(`-{2,}`).ReplaceAllString(ingress.Namespace, "-")
 				traefikMiddlewares := addStatusCode(
 					traefikValue,
-					fmt.Sprintf("%s-aergia@kubernetescrd", ingress.Namespace),
+					fmt.Sprintf("%s-aergia@kubernetescrd", normalizedNamespace),
 				)
 				mergePatch, _ := json.Marshal(map[string]interface{}{
 					"metadata": map[string]interface{}{

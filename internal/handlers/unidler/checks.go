@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -81,7 +82,9 @@ func (h *Unidler) removeCodeFromIngress(ctx context.Context, ns string, opLog lo
 		}
 		traefikValue, ok := ingress.Annotations["traefik.ingress.kubernetes.io/router.middlewares"]
 		if ok {
-			traefikMiddlewares = removeStatusCode(traefikValue, fmt.Sprintf("%s-aergia@kubernetescrd", ingress.Namespace))
+			// traefik needs a normalized namespace
+			normalizedNamespace := regexp.MustCompile(`-{2,}`).ReplaceAllString(ingress.Namespace, "-")
+			traefikMiddlewares = removeStatusCode(traefikValue, fmt.Sprintf("%s-aergia@kubernetescrd", normalizedNamespace))
 			patch = true
 		}
 		if patch {
