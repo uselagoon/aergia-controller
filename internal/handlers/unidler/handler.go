@@ -61,7 +61,9 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 		hostname := ""
 		nsParam := r.URL.Query().Get("namespace")
 		if nsParam != "" {
-			opLog.Info(fmt.Sprintf("Namespace Param: %s", nsParam))
+			if h.Debug {
+				opLog.Info(fmt.Sprintf("Namespace Param: %s", nsParam))
+			}
 			ns = nsParam
 		}
 		urlParam := r.URL.Query().Get("url")
@@ -70,7 +72,9 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 			if err != nil {
 				opLog.Info(fmt.Sprintf("URL Param err: %v", err))
 			}
-			opLog.Info(fmt.Sprintf("URL Param: %s", urlParam))
+			if h.Debug {
+				opLog.Info(fmt.Sprintf("URL Param: %s", urlParam))
+			}
 			hostname = url.Hostname()
 		}
 		// check if the namespace exists so we know this is somewhat legitimate request
