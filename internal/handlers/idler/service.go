@@ -16,6 +16,7 @@ import (
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=list;get;watch;patch
 // +kubebuilder:rbac:groups=*,resources=ingresses,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=*,resources=ingress/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=list;get;update;patch
 
 // ServiceIdler will run the Service idler process.
 func (h *Idler) ServiceIdler() {
