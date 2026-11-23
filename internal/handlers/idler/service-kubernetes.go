@@ -130,7 +130,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					namespace.Name,
 					prometheusInternalCheck,
 				)
-				result, warnings, err := v1api.Query(ctx, promQuery, time.Now())
+				result, warnings, _, err := v1api.Query(ctx, promQuery, time.Now())
 				if err != nil {
 					opLog.Error(err, "Error querying Prometheus")
 					return
@@ -143,7 +143,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					namespace.Name,
 					prometheusInternalCheck,
 				)
-				result2, warnings2, err := v1api.Query(ctx, promQuery2, time.Now())
+				result2, warnings2, _, err := v1api.Query(ctx, promQuery2, time.Now())
 				if err != nil {
 					opLog.Error(err, "Error querying Prometheus")
 					return
