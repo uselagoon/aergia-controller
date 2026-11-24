@@ -23,14 +23,27 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/uselagoon/aergia-controller/internal/handlers/idler"
 	"github.com/uselagoon/aergia-controller/internal/handlers/unidler"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
+
+// ControlConfigMapName is the name of the configmap used to request idling actions from within a namespace
+const ControlConfigMapName = "aergia-control"
+
+// ControlLabel is the label that marks the control configmap so that it is watched
+const ControlLabel = "idling.lagoon.sh/control"
+
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=create;get;list;watch;patch
 
 // IdlingReconciler reconciles idling
 type IdlingReconciler struct {
@@ -49,63 +62,105 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, ignoreNotFound(err)
 	}
 
-	if val, ok := namespace.Labels["idling.amazee.io/force-scaled"]; ok && val == "true" {
-		opLog.Info(fmt.Sprintf("Force scaling environment %s", namespace.Name))
-		r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, namespace.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName], false, true)
-		nsMergePatch, _ := json.Marshal(map[string]interface{}{
-			"metadata": map[string]interface{}{
-				"labels": map[string]*string{
-					"idling.amazee.io/force-scaled": nil,
-				},
-			},
-		})
-		if err := r.Patch(ctx, &namespace, client.RawPatch(types.MergePatchType, nsMergePatch)); err != nil {
-			// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
-			opLog.Info(fmt.Sprintf("Error patching namespace %s -%v", namespace.Name, err))
+	var controlConfigMap *corev1.ConfigMap
+	if val, ok := namespace.Labels["idling.amazee.io/idled"]; ok && val == "true" {
+		cm, err := r.ensureControlConfigMap(ctx, namespace.Name)
+		if err != nil {
+			opLog.Info(fmt.Sprintf("Error creating control configmap in namespace %s - %v", namespace.Name, err))
 		}
-		return ctrl.Result{}, nil
+		controlConfigMap = cm
+	}
+	if controlConfigMap == nil {
+		var cm corev1.ConfigMap
+		if err := r.Get(ctx, types.NamespacedName{Namespace: namespace.Name, Name: ControlConfigMapName}, &cm); err == nil {
+			controlConfigMap = &cm
+		}
 	}
 
-	if val, ok := namespace.Labels["idling.amazee.io/force-idled"]; ok && val == "true" {
-		opLog.Info(fmt.Sprintf("Force idling environment %s", namespace.Name))
-		r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, namespace.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName], true, false)
-		nsMergePatch, _ := json.Marshal(map[string]interface{}{
-			"metadata": map[string]interface{}{
-				"labels": map[string]*string{
-					"idling.amazee.io/force-idled": nil,
-				},
-			},
-		})
-		if err := r.Patch(ctx, &namespace, client.RawPatch(types.MergePatchType, nsMergePatch)); err != nil {
-			// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
-			opLog.Info(fmt.Sprintf("Error patching namespace %s -%v", namespace.Name, err))
+	// namespace labels take priority over the configmap, and both are cleared once the action is performed
+	for _, action := range []string{"force-scaled", "force-idled", "unidle"} {
+		key := "idling.amazee.io/" + action
+		inNamespace := namespace.Labels[key] == "true"
+		inConfigMap := controlConfigMap != nil && controlConfigMap.Data[action] == "true"
+		if !inNamespace && !inConfigMap {
+			continue
 		}
-		return ctrl.Result{}, nil
-	}
-
-	if val, ok := namespace.Labels["idling.amazee.io/unidle"]; ok && val == "true" {
-		opLog.Info(fmt.Sprintf("Unidling environment %s", namespace.Name))
-		r.Unidler.Unidle(ctx, &namespace, opLog)
-		nsMergePatch, _ := json.Marshal(map[string]interface{}{
-			"metadata": map[string]interface{}{
-				"labels": map[string]*string{
-					"idling.amazee.io/unidle": nil,
+		projectName := namespace.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName]
+		switch action {
+		case "force-scaled":
+			opLog.Info(fmt.Sprintf("Force scaling environment %s", namespace.Name))
+			r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, projectName, false, true)
+		case "force-idled":
+			opLog.Info(fmt.Sprintf("Force idling environment %s", namespace.Name))
+			r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, projectName, true, false)
+		case "unidle":
+			opLog.Info(fmt.Sprintf("Unidling environment %s", namespace.Name))
+			r.Unidler.Unidle(ctx, &namespace, opLog)
+		}
+		if inNamespace {
+			nsMergePatch, _ := json.Marshal(map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"labels": map[string]*string{key: nil},
 				},
-			},
-		})
-		if err := r.Patch(ctx, &namespace, client.RawPatch(types.MergePatchType, nsMergePatch)); err != nil {
-			// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
-			opLog.Info(fmt.Sprintf("Error patching namespace %s -%v", namespace.Name, err))
+			})
+			if err := r.Patch(ctx, &namespace, client.RawPatch(types.MergePatchType, nsMergePatch)); err != nil {
+				opLog.Info(fmt.Sprintf("Error patching namespace %s -%v", namespace.Name, err))
+			}
+		}
+		if inConfigMap {
+			cmMergePatch, _ := json.Marshal(map[string]interface{}{
+				"data": map[string]*string{action: nil},
+			})
+			if err := r.Patch(ctx, controlConfigMap, client.RawPatch(types.MergePatchType, cmMergePatch)); err != nil {
+				opLog.Info(fmt.Sprintf("Error patching configmap %s in namespace %s -%v", ControlConfigMapName, namespace.Name, err))
+			}
 		}
 		return ctrl.Result{}, nil
 	}
 	return ctrl.Result{}, nil
 }
 
+// ensureControlConfigMap creates an empty control configmap in an idled namespace if it doesn't already exist.
+func (r *IdlingReconciler) ensureControlConfigMap(ctx context.Context, namespace string) (*corev1.ConfigMap, error) {
+	var existing corev1.ConfigMap
+	err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ControlConfigMapName}, &existing)
+	if err == nil {
+		return &existing, nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return nil, err
+	}
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ControlConfigMapName,
+			Namespace: namespace,
+			Labels: map[string]string{
+				ControlLabel: "true",
+			},
+		},
+	}
+	if err := r.Create(ctx, configMap); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return configMap, nil
+}
+
 // SetupWithManager sets up the watch on the namespace resource with an event filter (see predicates.go)
 func (r *IdlingReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Namespace{}).
+		Watches(
+			&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: obj.GetNamespace()}}}
+			}),
+			builder.WithPredicates(predicate.NewPredicateFuncs(func(obj client.Object) bool {
+				return obj.GetName() == ControlConfigMapName && obj.GetLabels()[ControlLabel] == "true"
+			})),
+		).
 		WithEventFilter(NamespacePredicates{}).
 		Complete(r)
 }

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
@@ -297,6 +298,81 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
 			time.Sleep(5 * time.Second)
 			// and check that it eventually unidles
+			gomega.EventuallyWithOffset(1, verifyUnidling, duration, interval).Should(gomega.Succeed())
+
+			ginkgo.By("validating that the control configmap can force idle and unidle")
+			// force idle using the namespace label so that the environment is idled and the configmap is created
+			cmd = exec.Command(
+				utils.Kubectl(), "patch", "namespace", "example-nginx",
+				"--type", "merge",
+				"-p", "{\"metadata\":{\"labels\":{\"idling.amazee.io/force-idled\":\"true\"}}}",
+			)
+			_, err = utils.Run(cmd)
+			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			gomega.EventuallyWithOffset(1, verifyForceIdlingPods, duration, interval).Should(gomega.Succeed())
+			verifyConfigMapExists := func() error {
+				cmd = exec.Command(
+					utils.Kubectl(), "get", "configmap", "aergia-control",
+					"-n", "example-nginx",
+					"-o", "jsonpath={.metadata.labels.idling\\.lagoon\\.sh/control}",
+				)
+				out, err := utils.Run(cmd)
+				if err != nil {
+					return err
+				}
+				if string(out) != "true" {
+					return fmt.Errorf("control configmap is missing the control label")
+				}
+				return nil
+			}
+			ginkgo.By("validating the control configmap is created for an idled environment")
+			gomega.EventuallyWithOffset(1, verifyConfigMapExists, duration, interval).Should(gomega.Succeed())
+			time.Sleep(5 * time.Second)
+			// now unidle using the configmap
+			cmd = exec.Command(
+				utils.Kubectl(), "patch", "configmap", "aergia-control", "-n", "example-nginx",
+				"--type", "merge",
+				"-p", "{\"data\":{\"unidle\":\"true\"}}",
+			)
+			_, err = utils.Run(cmd)
+			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			gomega.EventuallyWithOffset(1, verifyUnidling, duration, interval).Should(gomega.Succeed())
+			ginkgo.By("validating the unidle request is cleared from the configmap")
+			verifyConfigMapCleared := func() error {
+				cmd = exec.Command(
+					utils.Kubectl(), "get", "configmap", "aergia-control",
+					"-n", "example-nginx",
+					"-o", "jsonpath={.data}",
+				)
+				out, err := utils.Run(cmd)
+				if err != nil {
+					return err
+				}
+				if strings.Contains(string(out), "unidle") {
+					return fmt.Errorf("unidle request still set in configmap: %s", string(out))
+				}
+				return nil
+			}
+			gomega.EventuallyWithOffset(1, verifyConfigMapCleared, duration, interval).Should(gomega.Succeed())
+			time.Sleep(5 * time.Second)
+			// and force idle using the configmap
+			cmd = exec.Command(
+				utils.Kubectl(), "patch", "configmap", "aergia-control", "-n", "example-nginx",
+				"--type", "merge",
+				"-p", "{\"data\":{\"force-idled\":\"true\"}}",
+			)
+			_, err = utils.Run(cmd)
+			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			gomega.EventuallyWithOffset(1, verifyForceIdlingPods, duration, interval).Should(gomega.Succeed())
+			time.Sleep(5 * time.Second)
+			// leave the environment unidled for the remaining tests
+			cmd = exec.Command(
+				utils.Kubectl(), "patch", "configmap", "aergia-control", "-n", "example-nginx",
+				"--type", "merge",
+				"-p", "{\"data\":{\"unidle\":\"true\"}}",
+			)
+			_, err = utils.Run(cmd)
+			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
 			gomega.EventuallyWithOffset(1, verifyUnidling, duration, interval).Should(gomega.Succeed())
 
 			ginkgo.By("validating that unauthenticated metrics requests fail")
