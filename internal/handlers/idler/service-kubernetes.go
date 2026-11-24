@@ -264,13 +264,15 @@ func (h *Idler) idleCronjobs(ctx context.Context, opLog logr.Logger, namespace s
 	})
 	cronjobs := &batchv1.CronJobList{}
 	if err := h.Client.List(ctx, cronjobs, listOption); err != nil {
-		// if we can't get any deployment configs for this namespace, log it and move on to the next
-		opLog.Error(err, "Error getting deployments")
+		opLog.Error(err, "Error getting cronjobs")
 		return
 	}
 	for _, cronjob := range cronjobs.Items {
-		// @TODO: use the patch method for the k8s client for now, this seems to work just fine
-		// Patching the deployment also works as we patch the endpoints below
+		// leave cronjobs that were already suspended by the user alone, so they are not enabled again on unidle
+		if cronjob.Spec.Suspend != nil && *cronjob.Spec.Suspend {
+			opLog.Info(fmt.Sprintf("Cronjob %s already suspended", cronjob.Name))
+			continue
+		}
 		if !h.DryRun {
 			suspendCronjob := cronjob.DeepCopy()
 			labels := map[string]string{
@@ -297,7 +299,7 @@ func (h *Idler) idleCronjobs(ctx context.Context, opLog logr.Logger, namespace s
 				},
 			})
 			if err := h.Client.Patch(ctx, suspendCronjob, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
-				// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
+				// log it but try and suspend the rest of the cronjobs anyway
 				opLog.Info(fmt.Sprintf("Error suspending cronjob %s", cronjob.Name))
 			} else {
 				opLog.Info(fmt.Sprintf("Cronjob %s suspended", cronjob.Name))
