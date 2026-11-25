@@ -63,10 +63,17 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	var controlConfigMap *corev1.ConfigMap
-	if val, ok := namespace.Labels["idling.amazee.io/idled"]; ok && val == "true" {
+	// provisioning errors are returned after any requested actions are handled, so a failure here never blocks an action
+	var provisionErr error
+	if val, ok := namespace.Labels["idling.amazee.io/idled"]; ok && val == "true" && namespace.DeletionTimestamp.IsZero() {
 		cm, err := r.ensureControlConfigMap(ctx, namespace.Name)
 		if err != nil {
-			opLog.Info(fmt.Sprintf("Error creating control configmap in namespace %s - %v", namespace.Name, err))
+			if isPermanentProvisionError(err) {
+				opLog.Info(fmt.Sprintf("Not retrying creation of control configmap in namespace %s - %v", namespace.Name, err))
+			} else {
+				opLog.Info(fmt.Sprintf("Error creating control configmap in namespace %s, will retry - %v", namespace.Name, err))
+				provisionErr = err
+			}
 		}
 		controlConfigMap = cm
 	}
@@ -115,9 +122,17 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				opLog.Info(fmt.Sprintf("Error patching configmap %s in namespace %s -%v", ControlConfigMapName, namespace.Name, err))
 			}
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, provisionErr
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, provisionErr
+}
+
+// isPermanentProvisionError returns true for errors where retrying will not help, such as missing permissions,
+// an invalid object, or a namespace that is being terminated.
+func isPermanentProvisionError(err error) bool {
+	return apierrors.IsForbidden(err) ||
+		apierrors.IsInvalid(err) ||
+		apierrors.HasStatusCause(err, corev1.NamespaceTerminatingCause)
 }
 
 // ensureControlConfigMap creates an empty control configmap in an idled namespace if it doesn't already exist.
