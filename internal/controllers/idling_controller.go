@@ -18,6 +18,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -106,6 +107,8 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 		}
 	}
+	// failing to clear a one-shot request is returned so that it is retried, otherwise it would replay on later updates
+	var clearErr error
 	if action != "" {
 		key := "idling.amazee.io/" + action
 		inConfigMap = controlConfigMap != nil && controlConfigMap.Data[action] == "true"
@@ -128,7 +131,10 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				},
 			})
 			if err := r.Patch(ctx, &namespace, client.RawPatch(types.MergePatchType, nsMergePatch)); err != nil {
-				opLog.Info(fmt.Sprintf("Error patching namespace %s -%v", namespace.Name, err))
+				opLog.Info(fmt.Sprintf("Error clearing %s from namespace %s, will retry - %v", key, namespace.Name, err))
+				if !apierrors.IsNotFound(err) {
+					clearErr = errors.Join(clearErr, err)
+				}
 			}
 		}
 		if inConfigMap {
@@ -136,11 +142,14 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				"data": map[string]*string{action: nil},
 			})
 			if err := r.Patch(ctx, controlConfigMap, client.RawPatch(types.MergePatchType, cmMergePatch)); err != nil {
-				opLog.Info(fmt.Sprintf("Error patching configmap %s in namespace %s -%v", ControlConfigMapName, namespace.Name, err))
+				opLog.Info(fmt.Sprintf("Error clearing %s from configmap %s in namespace %s, will retry - %v", action, ControlConfigMapName, namespace.Name, err))
+				if !apierrors.IsNotFound(err) {
+					clearErr = errors.Join(clearErr, err)
+				}
 			}
 		}
 	}
-	return ctrl.Result{}, provisionErr
+	return ctrl.Result{}, errors.Join(clearErr, provisionErr)
 }
 
 // isPermanentProvisionError returns true for errors where retrying will not help, such as missing permissions,
