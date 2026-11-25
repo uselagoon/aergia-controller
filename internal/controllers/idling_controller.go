@@ -84,6 +84,11 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
+	if controlConfigMap != nil && controlConfigMap.Labels[ControlLabel] != "true" {
+		opLog.Info(fmt.Sprintf("Ignoring configmap %s in namespace %s, it is missing the %s=true label", ControlConfigMapName, namespace.Name, ControlLabel))
+		controlConfigMap = nil
+	}
+
 	// namespace labels take priority over the configmap, and both are cleared once the action is performed
 	actions := []string{"force-scaled", "force-idled", "unidle"}
 	action, inNamespace, inConfigMap := "", false, false
