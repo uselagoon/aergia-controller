@@ -200,6 +200,9 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 			if *deployment.Spec.Replicas > 0 {
 				// and override it with whatever is in the deployment if it is greater than 0
 				idleReplicas = deployment.Spec.Replicas
+			} else if saved, err := strconv.ParseInt(deployment.Annotations["idling.amazee.io/unidle-replicas"], 10, 32); err == nil && saved > 0 {
+				// the deployment is already scaled down (for example when a request is retried), so keep the saved count
+				*idleReplicas = int32(saved)
 			}
 			scaleDeployment := deployment.DeepCopy()
 			labels := map[string]string{
