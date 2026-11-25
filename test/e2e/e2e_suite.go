@@ -300,6 +300,26 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			// and check that it eventually unidles
 			gomega.EventuallyWithOffset(1, verifyUnidling, duration, interval).Should(gomega.Succeed())
 
+			// verifies the environment has been scaled back up without sending any traffic that could wake it
+			verifyPodsRunning := func() error {
+				cmd = exec.Command(utils.Kubectl(), "get",
+					"pods", "-l", "app=example-nginx",
+					"-o", "go-template={{ range .items }}"+
+						"{{ if not .metadata.deletionTimestamp }}"+
+						"{{ if eq .status.phase \"Running\" }}"+
+						"{{ .metadata.name }}"+
+						"{{ \"\\n\" }}{{ end }}{{ end }}{{ end }}",
+					"-n", "example-nginx",
+				)
+				podOutput, err := utils.Run(cmd)
+				if err != nil {
+					return err
+				}
+				if len(utils.GetNonEmptyLines(string(podOutput))) == 0 {
+					return fmt.Errorf("expect running pods, but got none")
+				}
+				return nil
+			}
 			ginkgo.By("validating that the control configmap can force idle and unidle")
 			// force idle using the namespace label so that the environment is idled and the configmap is created
 			cmd = exec.Command(
@@ -336,6 +356,7 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			)
 			_, err = utils.Run(cmd)
 			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			gomega.EventuallyWithOffset(1, verifyPodsRunning, duration, interval).Should(gomega.Succeed())
 			gomega.EventuallyWithOffset(1, verifyUnidling, duration, interval).Should(gomega.Succeed())
 			ginkgo.By("validating the unidle request is cleared from the configmap")
 			verifyConfigMapCleared := func() error {
@@ -373,6 +394,7 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			)
 			_, err = utils.Run(cmd)
 			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+			gomega.EventuallyWithOffset(1, verifyPodsRunning, duration, interval).Should(gomega.Succeed())
 			gomega.EventuallyWithOffset(1, verifyUnidling, duration, interval).Should(gomega.Succeed())
 
 			ginkgo.By("validating that unauthenticated metrics requests fail")
