@@ -85,13 +85,25 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// namespace labels take priority over the configmap, and both are cleared once the action is performed
-	for _, action := range []string{"force-scaled", "force-idled", "unidle"} {
-		key := "idling.amazee.io/" + action
-		inNamespace := namespace.Labels[key] == "true"
-		inConfigMap := controlConfigMap != nil && controlConfigMap.Data[action] == "true"
-		if !inNamespace && !inConfigMap {
-			continue
+	actions := []string{"force-scaled", "force-idled", "unidle"}
+	action, inNamespace, inConfigMap := "", false, false
+	for _, candidate := range actions {
+		if namespace.Labels["idling.amazee.io/"+candidate] == "true" {
+			action, inNamespace = candidate, true
+			break
 		}
+	}
+	if action == "" && controlConfigMap != nil {
+		for _, candidate := range actions {
+			if controlConfigMap.Data[candidate] == "true" {
+				action = candidate
+				break
+			}
+		}
+	}
+	if action != "" {
+		key := "idling.amazee.io/" + action
+		inConfigMap = controlConfigMap != nil && controlConfigMap.Data[action] == "true"
 		projectName := namespace.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName]
 		switch action {
 		case "force-scaled":
@@ -122,7 +134,6 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				opLog.Info(fmt.Sprintf("Error patching configmap %s in namespace %s -%v", ControlConfigMapName, namespace.Name, err))
 			}
 		}
-		return ctrl.Result{}, provisionErr
 	}
 	return ctrl.Result{}, provisionErr
 }
