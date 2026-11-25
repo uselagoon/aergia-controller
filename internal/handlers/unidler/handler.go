@@ -152,7 +152,11 @@ func (h *Unidler) ingressHandler(path string) func(http.ResponseWriter, *http.Re
 							if h.Debug {
 								opLog.Info(fmt.Sprintf("Unidle request for %s verfied", ns))
 							}
-							go h.Unidle(ctx, namespace, opLog)
+							go func() {
+								if err := h.Unidle(ctx, namespace, opLog); err != nil {
+									opLog.Info(fmt.Sprintf("Error unidling namespace %s - %v", namespace.Name, err))
+								}
+							}()
 						}
 					} else {
 						metrics.VerificationRequired.Inc()

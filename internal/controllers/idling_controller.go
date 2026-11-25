@@ -82,6 +82,9 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		var cm corev1.ConfigMap
 		if err := r.Get(ctx, types.NamespacedName{Namespace: namespace.Name, Name: ControlConfigMapName}, &cm); err == nil {
 			controlConfigMap = &cm
+		} else if !apierrors.IsNotFound(err) {
+			// a failed read must not be treated as "no requests", otherwise a pending request is lost until the next event
+			provisionErr = errors.Join(provisionErr, fmt.Errorf("error reading control configmap in namespace %s: %w", namespace.Name, err))
 		}
 	}
 
@@ -112,17 +115,23 @@ func (r *IdlingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if action != "" {
 		key := "idling.amazee.io/" + action
 		inConfigMap = controlConfigMap != nil && controlConfigMap.Data[action] == "true"
+		var actionErr error
 		projectName := namespace.Labels[r.Idler.Selectors.NamespaceSelectorsLabels.ProjectName]
 		switch action {
 		case "force-scaled":
 			opLog.Info(fmt.Sprintf("Force scaling environment %s", namespace.Name))
-			r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, projectName, false, true)
+			actionErr = r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, projectName, false, true)
 		case "force-idled":
 			opLog.Info(fmt.Sprintf("Force idling environment %s", namespace.Name))
-			r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, projectName, true, false)
+			actionErr = r.Idler.KubernetesServiceIdler(ctx, opLog, namespace, projectName, true, false)
 		case "unidle":
 			opLog.Info(fmt.Sprintf("Unidling environment %s", namespace.Name))
-			r.Unidler.Unidle(ctx, &namespace, opLog)
+			actionErr = r.Unidler.Unidle(ctx, &namespace, opLog)
+		}
+		if actionErr != nil {
+			// leave the request in place so that it is retried, clearing it would silently drop the action
+			opLog.Info(fmt.Sprintf("Error performing %s for environment %s, will retry - %v", action, namespace.Name, actionErr))
+			return ctrl.Result{}, errors.Join(actionErr, provisionErr)
 		}
 		if inNamespace {
 			nsMergePatch, _ := json.Marshal(map[string]interface{}{
