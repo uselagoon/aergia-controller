@@ -3,6 +3,7 @@ package unidler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -128,7 +129,8 @@ func faviconHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s\n", favicon)
 }
 
-func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog logr.Logger) {
+func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog logr.Logger) error {
+	var unidleErr error
 	defer h.Locks.Delete(namespace.Name)
 	// get the deployments in the namespace if they have the `watch=true` label
 	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/watch", selection.Equals, []string{"true"})
@@ -141,7 +143,7 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	deployments := &appsv1.DeploymentList{}
 	if err := h.Client.List(ctx, deployments, listOption); err != nil {
 		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", namespace.Name))
-		return
+		return fmt.Errorf("unable to get deployments in %s: %w", namespace.Name, err)
 	}
 	for _, deploy := range deployments.Items {
 		// if the idled annotation is true
@@ -179,6 +181,7 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 				if err := h.Client.Patch(ctx, scaleDepConf, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 					// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
 					opLog.Info(fmt.Sprintf("Error scaling deployment %s - %s", deploy.Name, namespace.Name))
+					unidleErr = errors.Join(unidleErr, fmt.Errorf("error scaling deployment %s: %w", deploy.Name, err))
 				} else {
 					opLog.Info(fmt.Sprintf("Deployment %s scaled to %d - %s", deploy.Name, newReplicas, namespace.Name))
 				}
@@ -208,5 +211,7 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	metrics.UnidleEvents.Inc()
 	if err := h.Client.Patch(ctx, namespaceCopy, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 		opLog.Info(fmt.Sprintf("Error patching namespace %s", namespace.Name))
+		unidleErr = errors.Join(unidleErr, fmt.Errorf("error patching namespace %s: %w", namespace.Name, err))
 	}
+	return unidleErr
 }

@@ -60,7 +60,10 @@ func (h *Idler) ServiceIdler() {
 					WithValues("environment", namespace.Labels[h.Selectors.NamespaceSelectorsLabels.EnvironmentName]).
 					WithValues("dry-run", h.DryRun)
 				envOpLog.Info("Checking namespace")
-				h.KubernetesServiceIdler(ctx, envOpLog, namespace, namespace.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], false, false)
+				if err := h.KubernetesServiceIdler(ctx, envOpLog, namespace, namespace.Labels[h.Selectors.NamespaceSelectorsLabels.ProjectName], false, false); err != nil {
+					// the next scheduled run will try again
+					envOpLog.Info(fmt.Sprintf("Namespace not idled - %v", err))
+				}
 			} else if h.Debug {
 				opLog.Info(fmt.Sprintf("skipping namespace %s; type is %s, autoidle values are env:%s proj:%s",
 					namespace.Name,

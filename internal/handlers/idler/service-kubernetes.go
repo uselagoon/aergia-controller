@@ -3,6 +3,7 @@ package idler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -21,8 +22,12 @@ import (
 	prometheusmodel "github.com/prometheus/common/model"
 )
 
+// ErrRunningBuild is returned when an environment was not idled because a build is running in it.
+var ErrRunningBuild = errors.New("environment has a running build")
+
 // KubernetesServiceIdler handles scaling deployments in kubernetes.
-func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string, forceIdle, forceScale bool) {
+// It returns an error if the requested idling could not be performed, so that callers can retry.
+func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string, forceIdle, forceScale bool) error {
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Builds)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace.Name),
@@ -76,7 +81,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 		if err := h.Client.List(ctx, deployments, listOption); err != nil {
 			// if we can't get any deployment configs for this namespace, log it and move on to the next
 			opLog.Error(err, "Error getting deployments")
-			return
+			return fmt.Errorf("error getting deployments: %w", err)
 		}
 		for _, deployment := range deployments.Items {
 			checkPods := false
@@ -133,7 +138,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				result, warnings, _, err := v1api.Query(ctx, promQuery, time.Now())
 				if err != nil {
 					opLog.Error(err, "Error querying Prometheus")
-					return
+					return fmt.Errorf("error querying prometheus: %w", err)
 				}
 				if len(warnings) > 0 {
 					opLog.Info(fmt.Sprintf("Warnings: %v", warnings))
@@ -146,7 +151,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				result2, warnings2, _, err := v1api.Query(ctx, promQuery2, time.Now())
 				if err != nil {
 					opLog.Error(err, "Error querying Prometheus")
-					return
+					return fmt.Errorf("error querying prometheus: %w", err)
 				}
 				if len(warnings2) > 0 {
 					opLog.Info(fmt.Sprintf("Warnings: %v", warnings2))
@@ -170,7 +175,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				opLog.Info(fmt.Sprintf("Environment has had %d hits in the last %s", numHits, prometheusInternalCheck))
 				if numHits != 0 {
 					opLog.Info("Environment does not need idling")
-					return
+					return nil
 				}
 			}
 			// if there weren't any issues patching the ingress, then proceed to scale the deployments
@@ -180,15 +185,18 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			if err != nil {
 				// if patching the ingress resources fail, then don't idle the environment
 				opLog.Info("Environment not idled due to errors patching ingress")
-				return
+				return err
 			}
 			opLog.Info("Environment will be idled")
-			h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale)
+			return h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale)
 		}
+		return nil
 	}
+	return ErrRunningBuild
 }
 
-func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployments *appsv1.DeploymentList, forceIdle, forceScale bool) {
+func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployments *appsv1.DeploymentList, forceIdle, forceScale bool) error {
+	var scaleErr error
 	for _, deployment := range deployments.Items {
 		// @TODO: use the patch method for the k8s client for now, this seems to work just fine
 		// Patching the deployment also works as we patch the endpoints below
@@ -200,6 +208,9 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 			if *deployment.Spec.Replicas > 0 {
 				// and override it with whatever is in the deployment if it is greater than 0
 				idleReplicas = deployment.Spec.Replicas
+			} else if saved, err := strconv.ParseInt(deployment.Annotations["idling.amazee.io/unidle-replicas"], 10, 32); err == nil && saved > 0 {
+				// the deployment is already scaled down (for example when a request is retried), so keep the saved count
+				*idleReplicas = int32(saved)
 			}
 			scaleDeployment := deployment.DeepCopy()
 			labels := map[string]string{
@@ -229,6 +240,7 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 			if err := h.Client.Patch(ctx, scaleDeployment, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
 				// log it but try and scale the rest of the deployments anyway (some idled is better than none?)
 				opLog.Info(fmt.Sprintf("Error scaling deployment %s", deployment.Name))
+				scaleErr = errors.Join(scaleErr, fmt.Errorf("error scaling deployment %s: %w", deployment.Name, err))
 			} else {
 				opLog.Info(fmt.Sprintf("Deployment %s scaled to 0", deployment.Name))
 			}
@@ -236,6 +248,7 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 			opLog.Info(fmt.Sprintf("Deployment %s would be scaled to 0", deployment.Name))
 		}
 	}
+	return scaleErr
 }
 
 /*

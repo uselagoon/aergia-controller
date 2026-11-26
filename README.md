@@ -25,6 +25,40 @@ To force scale a namespace, you can label the namespace using `idling.amazee.io/
 ### Unidle
 To unidle a namespace, you can label the namespace using `idling.amazee.io/unidle=true`. This will cause the environment to be scaled back up to its previous state.
 
+### Control ConfigMap
+If you want to trigger these actions without permission to patch the namespace (for example from a system with limited RBAC inside the namespace), you can use the `aergia-control` ConfigMap in the namespace instead.
+
+Aergia creates an empty `aergia-control` ConfigMap, with the label `idling.lagoon.sh/control=true`, in any namespace that is idled (including on startup). If you create it yourself, it must have the same name and label to be watched.
+
+Set any of the following keys to `"true"` in the ConfigMap `data` to request the action:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aergia-control
+  labels:
+    idling.lagoon.sh/control: "true"
+data:
+  force-idled: "true"
+  force-scaled: "true"
+  unidle: "true"
+```
+
+* The keys behave the same as the namespace labels of the same name (`idling.amazee.io/force-idled`, `idling.amazee.io/force-scaled`, `idling.amazee.io/unidle`).
+* Each key is a one-shot request. Once the action is performed, Aergia removes the key from the ConfigMap (and the label from the namespace, if it was also set).
+* If both a namespace label and a ConfigMap key are set, the namespace label is processed first. Only one action is performed at a time, in the order force-scaled, force-idled, unidle.
+* Only the value `"true"` triggers an action.
+
+Example RBAC for a user or service account in the namespace:
+```yaml
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["aergia-control"]
+  verbs: ["get", "patch"]
+```
+
 ### Idled
 A label `idling.amazee.io/idled` is set that will be true or false depending on if the environment is idled. This ideally should not be modified as Aergia will update it as required.
 
