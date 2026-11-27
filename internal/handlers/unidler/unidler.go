@@ -131,6 +131,24 @@ func faviconHandler(w http.ResponseWriter, r *http.Request) {
 
 func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog logr.Logger) error {
 	var unidleErr error
+	waitTimedOut := false
+	listFailed := false
+	start := time.Now()
+	metrics.UnidlesInFlight.Inc()
+	defer func() {
+		metrics.UnidlesInFlight.Dec()
+		result := metrics.UnidleResultSuccess
+		switch {
+		case listFailed:
+			result = metrics.UnidleResultError
+		case waitTimedOut:
+			result = metrics.UnidleResultWaitTimeout
+		case unidleErr != nil:
+			result = metrics.UnidleResultPartialError
+		}
+		metrics.UnidleResults.WithLabelValues(result).Inc()
+		metrics.UnidleDuration.WithLabelValues(result).Observe(time.Since(start).Seconds())
+	}()
 	defer h.Locks.Delete(namespace.Name)
 	// get the deployments in the namespace if they have the `watch=true` label
 	labelRequirements1, _ := labels.NewRequirement("idling.amazee.io/watch", selection.Equals, []string{"true"})
@@ -142,6 +160,7 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	})
 	deployments := &appsv1.DeploymentList{}
 	if err := h.Client.List(ctx, deployments, listOption); err != nil {
+		listFailed = true
 		opLog.Info(fmt.Sprintf("Unable to get any deployments - %s", namespace.Name))
 		return fmt.Errorf("unable to get deployments in %s: %w", namespace.Name, err)
 	}
@@ -194,6 +213,7 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 		opLog.Info(fmt.Sprintf("Waiting for %s to be running - %s", deploy.Name, namespace.Name))
 		err := wait.PollUntilContextTimeout(ctx, defaultPollDuration, defaultPollTimeout, true, h.hasRunningPod(ctx, namespace.Name, deploy.Name))
 		if err != nil {
+			waitTimedOut = true
 			opLog.Error(err, "error waiting for deployments")
 		}
 	}

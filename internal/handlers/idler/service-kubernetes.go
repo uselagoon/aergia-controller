@@ -28,6 +28,12 @@ var ErrRunningBuild = errors.New("environment has a running build")
 // KubernetesServiceIdler handles scaling deployments in kubernetes.
 // It returns an error if the requested idling could not be performed, so that callers can retry.
 func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, lagoonProject string, forceIdle, forceScale bool) error {
+	outcome, err := h.evaluateServiceIdle(ctx, opLog, namespace, forceIdle, forceScale)
+	metrics.IdleEvaluations.WithLabelValues(metrics.IdleTypeService, outcome).Inc()
+	return err
+}
+
+func (h *Idler) evaluateServiceIdle(ctx context.Context, opLog logr.Logger, namespace corev1.Namespace, forceIdle, forceScale bool) (string, error) {
 	labelRequirements := generateLabelRequirements(h.Selectors.Service.Builds)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace.Name),
@@ -81,7 +87,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 		if err := h.Client.List(ctx, deployments, listOption); err != nil {
 			// if we can't get any deployment configs for this namespace, log it and move on to the next
 			opLog.Error(err, "Error getting deployments")
-			return fmt.Errorf("error getting deployments: %w", err)
+			return metrics.OutcomeErrorList, fmt.Errorf("error getting deployments: %w", err)
 		}
 		for _, deployment := range deployments.Items {
 			checkPods := false
@@ -135,12 +141,16 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					namespace.Name,
 					prometheusInternalCheck,
 				)
+				queryStart := time.Now()
 				result, warnings, _, err := v1api.Query(ctx, promQuery, time.Now())
+				metrics.PrometheusQueryDuration.WithLabelValues(metrics.PrometheusQueryNginx).Observe(time.Since(queryStart).Seconds())
 				if err != nil {
+					metrics.PrometheusQueryErrors.WithLabelValues(metrics.PrometheusQueryNginx).Inc()
 					opLog.Error(err, "Error querying Prometheus")
-					return fmt.Errorf("error querying prometheus: %w", err)
+					return metrics.OutcomeErrorPrometheus, fmt.Errorf("error querying prometheus: %w", err)
 				}
 				if len(warnings) > 0 {
+					metrics.PrometheusQueryWarnings.WithLabelValues(metrics.PrometheusQueryNginx).Add(float64(len(warnings)))
 					opLog.Info(fmt.Sprintf("Warnings: %v", warnings))
 				}
 				promQuery2 := fmt.Sprintf(
@@ -148,12 +158,16 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 					namespace.Name,
 					prometheusInternalCheck,
 				)
+				queryStart = time.Now()
 				result2, warnings2, _, err := v1api.Query(ctx, promQuery2, time.Now())
+				metrics.PrometheusQueryDuration.WithLabelValues(metrics.PrometheusQueryTraefik).Observe(time.Since(queryStart).Seconds())
 				if err != nil {
+					metrics.PrometheusQueryErrors.WithLabelValues(metrics.PrometheusQueryTraefik).Inc()
 					opLog.Error(err, "Error querying Prometheus")
-					return fmt.Errorf("error querying prometheus: %w", err)
+					return metrics.OutcomeErrorPrometheus, fmt.Errorf("error querying prometheus: %w", err)
 				}
 				if len(warnings2) > 0 {
+					metrics.PrometheusQueryWarnings.WithLabelValues(metrics.PrometheusQueryTraefik).Add(float64(len(warnings2)))
 					opLog.Info(fmt.Sprintf("Warnings: %v", warnings2))
 				}
 				// and then add up the results of all the status requests to determine hit count
@@ -175,7 +189,7 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				opLog.Info(fmt.Sprintf("Environment has had %d hits in the last %s", numHits, prometheusInternalCheck))
 				if numHits != 0 {
 					opLog.Info("Environment does not need idling")
-					return nil
+					return metrics.OutcomeSkippedHasHits, nil
 				}
 			}
 			// if there weren't any issues patching the ingress, then proceed to scale the deployments
@@ -185,14 +199,20 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 			if err != nil {
 				// if patching the ingress resources fail, then don't idle the environment
 				opLog.Info("Environment not idled due to errors patching ingress")
-				return err
+				return metrics.OutcomeErrorIngressPatch, err
 			}
 			opLog.Info("Environment will be idled")
-			return h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale)
+			if err := h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale); err != nil {
+				return metrics.OutcomeErrorScale, err
+			}
+			if h.DryRun {
+				return metrics.OutcomeDryRun, nil
+			}
+			return metrics.OutcomeIdled, nil
 		}
-		return nil
+		return metrics.OutcomeSkippedNotOldEnough, nil
 	}
-	return ErrRunningBuild
+	return metrics.OutcomeSkippedRunningBuild, ErrRunningBuild
 }
 
 func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployments *appsv1.DeploymentList, forceIdle, forceScale bool) error {

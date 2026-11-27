@@ -3,6 +3,9 @@ package idler
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/uselagoon/aergia-controller/internal/handlers/metrics"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -54,4 +57,5 @@ func (h *Idler) CLIIdler() {
 			}
 		}
 	}
+	metrics.IdlerLastRun.WithLabelValues(metrics.IdleTypeCLI).Set(float64(time.Now().Unix()))
 }
