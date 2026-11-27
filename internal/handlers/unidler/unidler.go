@@ -189,7 +189,7 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 			}
 		}
 	}
-	h.unsuspendCronjobs(ctx, namespace.Name, listOption, opLog)
+	h.unsuspendCronjobs(ctx, namespace.Name, opLog)
 	// now wait for the pods of these deployments to be ready
 	// this could still result in 503 for users until the resulting services/endpoints are active and receiving traffic
 	for _, deploy := range deployments.Items {
@@ -218,7 +218,14 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 	return unidleErr
 }
 
-func (h *Unidler) unsuspendCronjobs(ctx context.Context, namespace string, listOption ctrlClient.ListOption, opLog logr.Logger) {
+func (h *Unidler) unsuspendCronjobs(ctx context.Context, namespace string, opLog logr.Logger) {
+	projectRequirement, _ := labels.NewRequirement("lagoon.sh/project", selection.Exists, nil)
+	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
+		ctrlClient.InNamespace(namespace),
+		ctrlClient.MatchingLabelsSelector{
+			Selector: labels.NewSelector().Add(*projectRequirement),
+		},
+	})
 	cronjobs := &batchv1.CronJobList{}
 	if err := h.Client.List(ctx, cronjobs, listOption); err != nil {
 		opLog.Info(fmt.Sprintf("Unable to get any cronjobs - %s", namespace))

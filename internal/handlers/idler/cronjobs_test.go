@@ -14,7 +14,7 @@ import (
 
 func newCronjob(name string, suspended bool) *batchv1.CronJob {
 	return &batchv1.CronJob{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns"},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns", Labels: map[string]string{"lagoon.sh/project": "p"}},
 		Spec:       batchv1.CronJobSpec{Suspend: &suspended},
 	}
 }

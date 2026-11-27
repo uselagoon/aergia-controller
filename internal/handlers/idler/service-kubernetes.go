@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -255,11 +256,11 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 }
 
 func (h *Idler) idleCronjobs(ctx context.Context, opLog logr.Logger, namespace string, forceIdle, forceScale bool) {
-	labelRequirements := generateLabelRequirements(h.Selectors.Service.Deployments)
+	projectRequirement, _ := labels.NewRequirement("lagoon.sh/project", selection.Exists, nil)
 	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
 		client.InNamespace(namespace),
 		client.MatchingLabelsSelector{
-			Selector: labels.NewSelector().Add(labelRequirements...),
+			Selector: labels.NewSelector().Add(*projectRequirement),
 		},
 	})
 	cronjobs := &batchv1.CronJobList{}
