@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/uselagoon/aergia-controller/internal/handlers/metrics"
@@ -127,9 +128,25 @@ func (h *Idler) kubernetesCLI(ctx context.Context, opLog logr.Logger, namespace 
 							if processCount == 0 {
 								if !h.DryRun {
 									scaleDeployment := deployment.DeepCopy()
+									idleReplicas := int32(1)
+									if deployment.Spec.Replicas != nil && *deployment.Spec.Replicas > 0 {
+										idleReplicas = *deployment.Spec.Replicas
+									} else if saved, err := strconv.ParseInt(deployment.Annotations["idling.amazee.io/unidle-replicas"], 10, 32); err == nil && saved > 0 {
+										idleReplicas = int32(saved)
+									}
 									mergePatch, _ := json.Marshal(map[string]interface{}{
 										"spec": map[string]interface{}{
 											"replicas": 0,
+										},
+										"metadata": map[string]interface{}{
+											"labels": map[string]string{
+												"idling.amazee.io/watch": "true",
+												"idling.amazee.io/idled": "true",
+											},
+											"annotations": map[string]string{
+												"idling.amazee.io/idled-at":        time.Now().Format(time.RFC3339),
+												"idling.amazee.io/unidle-replicas": strconv.FormatInt(int64(idleReplicas), 10),
+											},
 										},
 									})
 									if err := h.Client.Patch(ctx, scaleDeployment, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
