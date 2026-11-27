@@ -198,7 +198,52 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			_, err = utils.Run(cmd)
 			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
 
+			ginkgo.By("creating example cronjobs")
+			cmd = exec.Command(
+				utils.Kubectl(),
+				"apply",
+				"-f",
+				"test/e2e/testdata/example-cronjobs.yaml",
+			)
+			_, err = utils.Run(cmd)
+			gomega.ExpectWithOffset(1, err).NotTo(gomega.HaveOccurred())
+
 			time.Sleep(10 * time.Second)
+
+			cronjobField := func(name, jsonpath string) (string, error) {
+				out, err := utils.Run(exec.Command(utils.Kubectl(), "get", "cronjob", name,
+					"-n", "example-nginx", "-o", "jsonpath="+jsonpath))
+				return string(out), err
+			}
+			expectCronjob := func(name, suspend, idled string) error {
+				gotSuspend, err := cronjobField(name, "{.spec.suspend}")
+				if err != nil {
+					return err
+				}
+				gotIdled, err := cronjobField(name, `{.metadata.labels.idling\.amazee\.io/idled}`)
+				if err != nil {
+					return err
+				}
+				if gotSuspend != suspend || gotIdled != idled {
+					return fmt.Errorf("cronjob %s: expected suspend=%q idled=%q, got suspend=%q idled=%q",
+						name, suspend, idled, gotSuspend, gotIdled)
+				}
+				return nil
+			}
+			verifyCronjobsIdled := func() error {
+				if err := expectCronjob("example-cron-active", "true", "true"); err != nil {
+					return err
+				}
+				// a cronjob suspended by the user must never be touched by the idler
+				return expectCronjob("example-cron-user-suspended", "true", "")
+			}
+			verifyCronjobsUnidled := func() error {
+				if err := expectCronjob("example-cron-active", "false", "false"); err != nil {
+					return err
+				}
+				// a cronjob suspended by the user must stay suspended after unidle
+				return expectCronjob("example-cron-user-suspended", "true", "")
+			}
 
 			// verify unidling by curl works
 			ginkgo.By("triggering an unidle event")
@@ -255,6 +300,8 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 				return nil
 			}
 			gomega.EventuallyWithOffset(1, verifyForceIdlingPods, duration, interval).Should(gomega.Succeed())
+			ginkgo.By("validating that cronjobs are suspended when idled")
+			gomega.EventuallyWithOffset(1, verifyCronjobsIdled, duration, interval).Should(gomega.Succeed())
 			time.Sleep(5 * time.Second)
 			// this will trigger the environment to unidle again, but should confirm that the environment is idled
 			verifyForceIdling := func() error {
@@ -274,6 +321,8 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			// verify that it eventually unidles
 			ginkgo.By("validate environment is unidled")
 			gomega.EventuallyWithOffset(1, verifyUnidling, duration, interval).Should(gomega.Succeed())
+			ginkgo.By("validating that cronjobs are enabled again when unidled")
+			gomega.EventuallyWithOffset(1, verifyCronjobsUnidled, duration, interval).Should(gomega.Succeed())
 
 			ginkgo.By("validating that force unidling works")
 			// first force idle the environment
@@ -299,6 +348,8 @@ var _ = ginkgo.Describe("controller", ginkgo.Ordered, func() {
 			time.Sleep(5 * time.Second)
 			// and check that it eventually unidles
 			gomega.EventuallyWithOffset(1, verifyUnidling, duration, interval).Should(gomega.Succeed())
+			ginkgo.By("validating that cronjobs are enabled again after force unidle")
+			gomega.EventuallyWithOffset(1, verifyCronjobsUnidled, duration, interval).Should(gomega.Succeed())
 
 			// verifies the environment has been scaled back up without sending any traffic that could wake it
 			verifyPodsRunning := func() error {

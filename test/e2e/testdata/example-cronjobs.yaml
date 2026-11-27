@@ -1,0 +1,45 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: example-cron-active
+  namespace: example-nginx
+  labels:
+    lagoon.sh/service: "nginx"
+    lagoon.sh/project: example
+    lagoon.sh/environment: "nginx"
+    lagoon.sh/environmentType: "development"
+spec:
+  schedule: "0 0 1 1 *"
+  suspend: false
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: cron
+            image: busybox:stable
+            command: ["true"]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: example-cron-user-suspended
+  namespace: example-nginx
+  labels:
+    lagoon.sh/service: "nginx"
+    lagoon.sh/project: example
+    lagoon.sh/environment: "nginx"
+    lagoon.sh/environmentType: "development"
+spec:
+  schedule: "0 0 1 1 *"
+  suspend: true
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: cron
+            image: busybox:stable
+            command: ["true"]

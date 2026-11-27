@@ -12,9 +12,11 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/uselagoon/aergia-controller/internal/handlers/metrics"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -188,7 +190,9 @@ func (h *Idler) KubernetesServiceIdler(ctx context.Context, opLog logr.Logger, n
 				return err
 			}
 			opLog.Info("Environment will be idled")
-			return h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale)
+			err = h.idleDeployments(ctx, opLog, deployments, forceIdle, forceScale)
+			h.idleCronjobs(ctx, opLog, namespace.Name, forceIdle, forceScale)
+			return err
 		}
 		return nil
 	}
@@ -249,6 +253,62 @@ func (h *Idler) idleDeployments(ctx context.Context, opLog logr.Logger, deployme
 		}
 	}
 	return scaleErr
+}
+
+func (h *Idler) idleCronjobs(ctx context.Context, opLog logr.Logger, namespace string, forceIdle, forceScale bool) {
+	projectRequirement, _ := labels.NewRequirement("lagoon.sh/project", selection.Exists, nil)
+	listOption := (&client.ListOptions{}).ApplyOptions([]client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabelsSelector{
+			Selector: labels.NewSelector().Add(*projectRequirement),
+		},
+	})
+	cronjobs := &batchv1.CronJobList{}
+	if err := h.Client.List(ctx, cronjobs, listOption); err != nil {
+		opLog.Error(err, "Error getting cronjobs")
+		return
+	}
+	for _, cronjob := range cronjobs.Items {
+		// leave cronjobs that were already suspended by the user alone, so they are not enabled again on unidle
+		if cronjob.Spec.Suspend != nil && *cronjob.Spec.Suspend {
+			opLog.Info(fmt.Sprintf("Cronjob %s already suspended", cronjob.Name))
+			continue
+		}
+		if !h.DryRun {
+			suspendCronjob := cronjob.DeepCopy()
+			labels := map[string]string{
+				// add the watch label so that the unidler knows to look at it
+				"idling.amazee.io/watch": "true",
+				"idling.amazee.io/idled": "true",
+			}
+			if forceIdle {
+				labels["idling.amazee.io/force-idled"] = "true"
+			}
+			if forceScale {
+				labels["idling.amazee.io/force-scaled"] = "true"
+			}
+			mergePatch, _ := json.Marshal(map[string]interface{}{
+				"spec": map[string]interface{}{
+					"suspend": true, // suspend the cronjob
+				},
+				"metadata": map[string]interface{}{
+					"labels": labels,
+					"annotations": map[string]string{
+						// add these annotations so user knows to look at them
+						"idling.amazee.io/idled-at": time.Now().Format(time.RFC3339),
+					},
+				},
+			})
+			if err := h.Client.Patch(ctx, suspendCronjob, client.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+				// log it but try and suspend the rest of the cronjobs anyway
+				opLog.Info(fmt.Sprintf("Error suspending cronjob %s", cronjob.Name))
+			} else {
+				opLog.Info(fmt.Sprintf("Cronjob %s suspended", cronjob.Name))
+			}
+		} else {
+			opLog.Info(fmt.Sprintf("Cronjob %s would suspend", cronjob.Name))
+		}
+	}
 }
 
 /*

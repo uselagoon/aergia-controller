@@ -14,6 +14,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/uselagoon/aergia-controller/internal/handlers/metrics"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/selection"
@@ -188,6 +189,7 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 			}
 		}
 	}
+	h.unsuspendCronjobs(ctx, namespace.Name, opLog)
 	// now wait for the pods of these deployments to be ready
 	// this could still result in 503 for users until the resulting services/endpoints are active and receiving traffic
 	for _, deploy := range deployments.Items {
@@ -214,4 +216,47 @@ func (h *Unidler) Unidle(ctx context.Context, namespace *corev1.Namespace, opLog
 		unidleErr = errors.Join(unidleErr, fmt.Errorf("error patching namespace %s: %w", namespace.Name, err))
 	}
 	return unidleErr
+}
+
+func (h *Unidler) unsuspendCronjobs(ctx context.Context, namespace string, opLog logr.Logger) {
+	projectRequirement, _ := labels.NewRequirement("lagoon.sh/project", selection.Exists, nil)
+	listOption := (&ctrlClient.ListOptions{}).ApplyOptions([]ctrlClient.ListOption{
+		ctrlClient.InNamespace(namespace),
+		ctrlClient.MatchingLabelsSelector{
+			Selector: labels.NewSelector().Add(*projectRequirement),
+		},
+	})
+	cronjobs := &batchv1.CronJobList{}
+	if err := h.Client.List(ctx, cronjobs, listOption); err != nil {
+		opLog.Info(fmt.Sprintf("Unable to get any cronjobs - %s", namespace))
+		return
+	}
+	for _, cronjob := range cronjobs.Items {
+		// only unsuspend cronjobs that were suspended by the idler
+		if cronjob.Labels["idling.amazee.io/idled"] != "true" {
+			continue
+		}
+		opLog.Info(fmt.Sprintf("Cronjob %s - %s", cronjob.Name, namespace))
+		mergePatch, _ := json.Marshal(map[string]interface{}{
+			"spec": map[string]interface{}{
+				"suspend": false,
+			},
+			"metadata": map[string]interface{}{
+				"labels": map[string]interface{}{
+					"idling.amazee.io/idled":        "false",
+					"idling.amazee.io/force-idled":  nil,
+					"idling.amazee.io/force-scaled": nil,
+				},
+				"annotations": map[string]interface{}{
+					"idling.amazee.io/idled-at": nil,
+				},
+			},
+		})
+		unsuspendCronjob := cronjob.DeepCopy()
+		if err := h.Client.Patch(ctx, unsuspendCronjob, ctrlClient.RawPatch(types.MergePatchType, mergePatch)); err != nil {
+			opLog.Info(fmt.Sprintf("Error unsuspending cronjob %s - %s", cronjob.Name, namespace))
+		} else {
+			opLog.Info(fmt.Sprintf("Cronjob %s unsuspended - %s", cronjob.Name, namespace))
+		}
+	}
 }

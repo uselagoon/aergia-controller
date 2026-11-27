@@ -62,6 +62,9 @@ rules:
 ### Idled
 A label `idling.amazee.io/idled` is set that will be true or false depending on if the environment is idled. This ideally should not be modified as Aergia will update it as required.
 
+### Cronjobs
+When an environment is idled, any matching cronjobs that are not already suspended are suspended and labelled `idling.amazee.io/idled=true`. When the environment is unidled, only the cronjobs suspended by Aergia are enabled again. Cronjobs that were suspended by a user before idling are left suspended. Jobs that are already running are not stopped.
+
 ### Namespace Idling Overrides
 If you want to change a namespaces interval check times outside of the globally applied intervals, the following annotations can be added to the namespace
 * `idling.amazee.io/prometheus-interval` - set this to the time interval for prometheus checks, the format must be in [30m|4h|1h30m](https://pkg.go.dev/time#ParseDuration) notation
